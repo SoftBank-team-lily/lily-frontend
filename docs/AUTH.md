@@ -1,6 +1,6 @@
 # 로그인·회원가입과 사용자별 관리 계획
 
-상태: **T13~T18 추가 — 구현 전**
+상태: **T13 결정 완료 — T14~T18 구현 진행 예정**
 
 ## 1. 목표와 범위
 
@@ -27,21 +27,50 @@
 
 ## 2. 구현 전에 확정할 것 — T13
 
-현재 저장소에는 인증 API·DB·인증 SDK가 없습니다. 다음 사항을 먼저 확정합니다.
+사용자 요청에 따라 API도 이 저장소에서 구현합니다. T13에서 아래 구성을 확정했습니다.
 
 | 항목 | 초안 / 확인할 내용 |
 |---|---|
-| 인증 서버 | 기존 백엔드 API가 있으면 해당 계약에 연결. 없으면 인증 서비스 또는 서버 구성을 선정 |
-| 로그인 수단 | 초안은 이메일·비밀번호. 기존 서비스 방식이 있으면 우선 적용 |
-| 계정 저장 | 서버 DB 또는 인증 서비스에 영속 저장 |
-| 세션 | 서버가 검증하는 세션, 브라우저에는 HttpOnly 쿠키 사용을 기본안으로 검토 |
-| 메일 | 인증 메일·비밀번호 재설정 메일 발송 주체와 개발 환경 처리 |
-| 프로젝트 API | 프로젝트 ID, 소유자 ID, 실제 배포 완료 이벤트의 계약 |
-| 대시보드 | 같은 앱의 경로인지 별도 앱인지, 두 앱이 사용하는 인증 주체와 로그인 전달 방식 |
+| 인증 서버 | Next.js Node.js Route Handler + Better Auth 1.7.6, 이 저장소에서 직접 운영 |
+| 로그인 수단 | 이메일·비밀번호, 이메일 인증 후 로그인 |
+| 계정 저장 | PostgreSQL 17, Docker Compose의 독립된 Lily DB와 영속 볼륨 |
+| 세션 | DB 세션, HttpOnly·SameSite 쿠키, 운영 HTTPS에서는 Secure, 7일 만료 |
+| 메일 | Nodemailer SMTP. 개발은 Mailpit, 운영은 SMTP_URL·MAIL_FROM 설정 |
+| 프로젝트 API | 이 저장소에서 직접 구현. UUID 프로젝트·배포 ID, 세션으로 소유자 결정 |
+| 대시보드 | 목적지 미정. DASHBOARD_URL 연결 전에는 준비 중 안내, 외부 앱의 SSO는 별도 연동 |
 
 백엔드 없이 로컬 저장소에 계정을 저장하는 기능은 실제 회원가입 완료로 취급하지 않습니다.
 개발용 목업은 명시적으로 구분하고, 실제 계정·프로젝트 저장 완료와 별도로 기록합니다.
 자체 인증 서버가 필요하면 프런트엔드 변경과 서버 작업의 담당 저장소를 함께 정합니다.
+
+### 구현할 API
+
+| 경로 | 역할 |
+|---|---|
+| `POST /api/auth/sign-up/email` | 계정 생성·인증 메일 |
+| `POST /api/auth/sign-in/email`, `POST /api/auth/sign-out` | 로그인·세션 무효화 |
+| `GET /api/auth/get-session` | 현재 세션 |
+| `POST /api/auth/update-user` | 본인 표시 이름 수정 |
+| `/api/auth/send-verification-email`, `/api/auth/verify-email` | 이메일 인증 |
+| `/api/auth/request-password-reset`, `/api/auth/reset-password` | 비밀번호 복구 |
+| `GET /api/projects`, `POST /api/projects` | 본인 프로젝트 목록·등록 |
+| `GET /api/projects/:id`, `PATCH /api/projects/:id` | 소유 프로젝트 상세·이름 수정 |
+| `GET /api/projects/:id/deployments`, `POST /api/projects/:id/deployments` | 기록 조회·배포 대기 기록 생성 |
+| `POST /api/internal/deployments/:id/events` | 실행기 전용 키로 실제 배포 상태 전달 |
+| `GET /api/projects/:id/entry` | 소유권·최신 배포 성공 확인 후 대시보드 진입 정보 |
+
+인증 API는 Better Auth가 제공하는 서버 핸들러를 사용합니다. 프로젝트·배포 API는 직접 구현합니다.
+일반 사용자가 배포 성공 상태를 임의로 등록할 수 없습니다. 배포 기록 생성은 `queued` 상태만
+허용하고, 실제 상태 변경은 서버 전용 `DEPLOYMENT_API_KEY`로 인증한 실행기 API에서 처리합니다.
+배포 실행 엔진 자체는 이번 범위에 포함하지 않습니다.
+
+### 개발 환경
+
+- DB: `localhost:5438`, Mailpit SMTP: `localhost:1026`, 메일 화면: `http://localhost:8026`.
+- `.env.local`에 DB·인증 URL·무작위 비밀키·메일 설정을 보관하며 Git에는 포함하지 않습니다.
+- `pnpm setup`이 개발 환경 파일을 만들고 `pnpm db:start`가 Lily 전용 서비스를 실행합니다.
+- 운영 환경은 개발용 DB 자격 증명을 사용하지 않고 DB·SMTP·HTTPS URL·비밀키를 설정합니다.
+- 기존 다른 프로젝트의 Docker 서비스나 DB에는 연결하지 않습니다.
 
 ## 3. 사용자 흐름
 

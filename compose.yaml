@@ -1,0 +1,24 @@
+name: lily
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: lily
+      POSTGRES_PASSWORD: lily-local
+      POSTGRES_DB: lily
+    ports:
+      - "127.0.0.1:5438:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lily -d lily"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  mail:
+    image: axllent/mailpit:v1.27.10
+    ports:
+      - "127.0.0.1:1026:1025"
+      - "127.0.0.1:8026:8025"
+volumes:
+  db:

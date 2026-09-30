@@ -10,12 +10,18 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run && node --test scripts/*.test.mjs",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "setup": "node scripts/setup.mjs",
+    "db:start": "docker compose up -d"
   },
   "dependencies": {
+    "better-auth": "1.7.6",
     "next": "16.3.7",
+    "nodemailer": "10.0.13",
+    "pg": "8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
     "three": "~0.186.1"
   },
   "devDependencies": {
@@ -27,6 +33,8 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/node": "^24.19.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -38,6 +46,7 @@
     "pngjs": "^7.0.0",
     "tailwindcss": "^4",
     "three-reference": "npm:three@0.128.0",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.2"
   },
