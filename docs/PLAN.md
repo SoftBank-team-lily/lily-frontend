@@ -561,6 +561,8 @@ class FlowerScene {
   3. `test: 배포 흐름 컴포넌트·동등성 테스트`
 
 ### T6. 꽃 씬 순수 모듈
+
+- **상태**: 완료. build·lint·typecheck 및 25개 테스트 통과. 원본 마스크·셰이더·입자 생성식 이식, 실제 마스크의 고정 난수 결과와 카메라 공간 검증.
 - **작업**
   - `scripts/extract-flower-mask.mjs`로 기준 HTML의 base64 PNG를 `public/flower-mask.png`에 저장합니다(187×187, 그레이스케일).
   - `readColorToken`: `#rrggbb`와 `rgb(% % %)`를 파싱하고 `THREE.Color`를 쓰지 않습니다.
