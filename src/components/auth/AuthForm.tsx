@@ -140,6 +140,11 @@ export function AuthForm({
             비밀번호를 잊었어요
           </Link>
         )}
+        {!signup && (
+          <Link href="/verify-email" className="hover:text-ink">
+            인증 메일 다시 받기
+          </Link>
+        )}
       </div>
     </>
   );

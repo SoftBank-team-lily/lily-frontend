@@ -6,17 +6,21 @@ export function AuthShell({
   title,
   description,
   children,
+  navigation,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  navigation?: ReactNode;
 }) {
   return (
     <>
       <SiteNav>
-        <Link href="/" className="text-caption text-mute hover:text-ink">
-          랜딩으로
-        </Link>
+        {navigation ?? (
+          <Link href="/" className="text-caption text-mute hover:text-ink">
+            랜딩으로
+          </Link>
+        )}
       </SiteNav>
       <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 pt-28 pb-12">
         <h1 className="text-display font-semibold">{title}</h1>
