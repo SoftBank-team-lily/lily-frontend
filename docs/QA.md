@@ -2,17 +2,17 @@
 
 2026-10-01, Node.js 24.14.1 · pnpm 12.8.1 · macOS에서 검증했습니다.
 
-## 자동 검사
+## T1~T9 자동 검사 기록
 
-| 검사 | 결과 |
-|---|---|
-| 프로덕션 빌드·lint·typecheck | 통과 |
-| Vitest | 34개 통과 |
-| 색상 검사 스크립트 테스트 | 2개 통과 |
-| Chromium 브라우저 검사 | 17개 통과 |
-| WebKit 모바일 세로·가로 배포 흐름 | 2개 통과 |
-| Lighthouse 13.5 접근성 | 100, 실행 경고 없음 |
-| axe WCAG 2 A·AA / 2.1 A·AA | 초기·오류·성공·롤백 위반 0 |
+| 검사                              | 결과                       |
+| --------------------------------- | -------------------------- |
+| 프로덕션 빌드·lint·typecheck      | 통과                       |
+| Vitest                            | 34개 통과                  |
+| 색상 검사 스크립트 테스트         | 2개 통과                   |
+| Chromium 브라우저 검사            | 17개 통과                  |
+| WebKit 모바일 세로·가로 배포 흐름 | 2개 통과                   |
+| Lighthouse 13.5 접근성            | 100, 실행 경고 없음        |
+| axe WCAG 2 A·AA / 2.1 A·AA        | 초기·오류·성공·롤백 위반 0 |
 
 Chromium은 Playwright 1.63.0의 Chrome 153, WebKit은 Playwright WebKit 26.6을 사용했습니다. 브라우저 검사는 `pnpm test:e2e`로 재현할 수 있습니다. Lighthouse는 로컬 실행 URL에 `pnpm dlx lighthouse <URL> --only-categories=accessibility`로 실행합니다.
 
@@ -51,3 +51,12 @@ Chromium 로컬 실행에서 180개 프레임 간격을 측정했습니다. 중�
 - [ ] 실제 모바일 GPU의 프레임 성능·발열
 
 WebKit 자동 검사는 위 항목을 대체하지 않습니다.
+
+## T13~T18 인증·프로젝트 API 작업
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build`로 정적 검사·프로덕션 빌드를 확인했습니다.
+- Lily 전용 PostgreSQL 17·Mailpit 컨테이너를 실행하고 `pnpm db:migrate`를 적용했습니다.
+- 자동 테스트를 추가하거나 실행하지 않았습니다. 위 T1~T9의 테스트 결과는 신규 인증·API 검증 결과가 아닙니다.
+- 회원가입·메일 인증·로그인·비밀번호 복구·계정 변경·타인 프로젝트 접근 거부는 실제 사용자 흐름 검증이 남아 있습니다.
+- 운영 DB·SMTP와 배포 실행 엔진, 실제 대시보드 이동·외부 앱 SSO는 연결하지 않았습니다.
+- 현재 개발 서버: `http://localhost:3210`, 개발 메일 화면: `http://localhost:8026`.

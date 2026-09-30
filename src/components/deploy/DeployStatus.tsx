@@ -11,6 +11,7 @@ type Props = {
   finished?: boolean;
   onReset?: () => void;
   resetDisabled?: boolean;
+  resetLabel?: string;
   actions?: ReactNode;
 };
 
@@ -23,6 +24,7 @@ export function DeployStatus({
   finished,
   onReset,
   resetDisabled,
+  resetLabel = "다시 배포하기",
   actions,
 }: Props) {
   return (
@@ -43,7 +45,7 @@ export function DeployStatus({
         <div className="mt-3.5 flex flex-wrap gap-2 max-[641px]:flex-col">
           {finished && (
             <Button variant="ghost" disabled={resetDisabled} onClick={onReset}>
-              다시 배포하기
+              {resetLabel}
             </Button>
           )}
           {actions}

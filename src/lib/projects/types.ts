@@ -1,5 +1,9 @@
 export type DeploymentStatus =
-  "queued" | "running" | "succeeded" | "failed" | "rolled-back";
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "rolled-back";
 export type Project = {
   id: string;
   repo: string;
@@ -15,4 +19,10 @@ export type Deployment = {
   finishedAt: string | null;
 };
 export type ProjectPage = { items: Project[]; nextCursor: string | null };
-export type ProjectEntry = { project: Project; destination: string | null };
+export type ReadyProject = Omit<Project, "latestDeployment"> & {
+  latestDeployment: { id: string; status: "succeeded" };
+};
+export type ProjectEntry = {
+  project: ReadyProject;
+  destination: string | null;
+};

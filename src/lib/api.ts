@@ -45,21 +45,23 @@ export function apiError(error: unknown) {
     500,
   );
 }
-export async function requireUser(request: Request, mutation = false) {
-  if (mutation) {
-    const allowed = [
-      process.env.BETTER_AUTH_URL,
-      ...(process.env.AUTH_TRUSTED_ORIGINS ?? "").split(","),
-    ]
-      .filter(Boolean)
-      .map((value) => new URL(value!.trim()).origin);
-    if (
-      !allowed.includes(request.headers.get("origin") ?? "") ||
-      request.headers.get("sec-fetch-site") === "cross-site"
-    ) {
-      throw new ApiError(403, "INVALID_ORIGIN", "허용되지 않은 요청입니다.");
-    }
+export function assertOrigin(request: Request) {
+  const allowed = [
+    process.env.BETTER_AUTH_URL,
+    ...(process.env.AUTH_TRUSTED_ORIGINS ?? "").split(","),
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value)
+    .map((value) => new URL(value).origin);
+  if (
+    !allowed.includes(request.headers.get("origin") ?? "") ||
+    request.headers.get("sec-fetch-site") === "cross-site"
+  ) {
+    throw new ApiError(403, "INVALID_ORIGIN", "허용되지 않은 요청입니다.");
   }
+}
+export async function requireUser(request: Request, mutation = false) {
+  if (mutation) assertOrigin(request);
   const user = await getUser(request.headers);
   if (!user) throw new ApiError(401, "UNAUTHENTICATED", "로그인이 필요해요.");
   if (!user.emailVerified)

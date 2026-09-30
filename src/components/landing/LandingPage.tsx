@@ -6,7 +6,9 @@ import { selectFlowerTargets } from "@/lib/deploy/deployReducer";
 import { useDeploy } from "@/lib/deploy/useDeploy";
 import { STAGES, REPO_ERROR, ROLLBACK_MESSAGE } from "@/lib/deploy/stages";
 import type { DeployResult } from "@/lib/deploy/types";
-import type { DashboardHandler } from "@/lib/dashboard/types";
+import type { DashboardHandler, EntryCheck } from "@/lib/dashboard/types";
+import type { ReadyProject } from "@/lib/projects/types";
+import { toDeployState } from "@/lib/projects/toDeployState";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
@@ -22,12 +24,18 @@ export function LandingPage({
   onComplete,
   onEnterDashboard,
   navigation,
+  project,
+  beforeEnter,
+  onResetProject,
 }: {
   onComplete?: (result: DeployResult) => void;
   onEnterDashboard?: DashboardHandler;
   navigation?: ReactNode;
+  project?: ReadyProject;
+  beforeEnter?: () => Promise<EntryCheck>;
+  onResetProject?: () => void;
 }) {
-  const [repo, setRepo] = useState("");
+  const [repo, setRepo] = useState(project?.repo ?? "");
   const [fail, setFail] = useState(false);
   const [error, setError] = useState("");
   const nav = useRef<HTMLElement>(null);
@@ -35,7 +43,9 @@ export function LandingPage({
   const input = useRef<HTMLInputElement>(null);
   const reducedMotion = usePrefersReducedMotion();
   const [flowerAvailable, setFlowerAvailable] = useState(false);
-  const { state, start, reset } = useDeploy({ reducedMotion, onComplete });
+  const deploy = useDeploy({ reducedMotion, onComplete });
+  const state = project ? toDeployState(project) : deploy.state;
+  const { start, reset } = deploy;
   const finished = state.phase === "succeeded" || state.phase === "rolled-back";
   const dashboardReady =
     state.phase === "succeeded" && state.result?.outcome === "succeeded";
@@ -45,6 +55,8 @@ export function LandingPage({
     blocked: !dashboardReady,
     result: state.result,
     onEnterDashboard,
+    beforeEnter,
+    projectId: project?.id,
   });
   const getSlot = useCallback(
     () => ({
@@ -101,6 +113,10 @@ export function LandingPage({
   function restart() {
     if (entry.busy) return;
     entry.clearMessage();
+    if (project) {
+      onResetProject?.();
+      return;
+    }
     flushSync(() => reset());
     input.current?.focus();
   }
@@ -140,23 +156,30 @@ export function LandingPage({
           >
             <div className="max-w-lg break-keep text-shadow-halo">
               <h2 className="mb-[0.8rem] text-display font-semibold">
-                지금 피워 보세요.
+                {project ? "프로젝트가 피었어요." : "지금 피워 보세요."}
               </h2>
               <p className="text-lead text-mute">
-                배포가 진행될수록 꽃에 색이 번져요. 이 화면은 시연용이라 실제
-                배포는 일어나지 않아요.
+                {project
+                  ? `${project.name}의 배포가 완료됐어요. 꽃을 눌러 대시보드를 열어 보세요.`
+                  : "배포가 진행될수록 꽃에 색이 번져요. 이 화면은 시연용이라 실제 배포는 일어나지 않아요."}
               </p>
             </div>
-            <DeployForm
-              repo={repo}
-              fail={fail}
-              error={error}
-              disabled={disabled || entry.busy}
-              inputRef={input}
-              onRepoChange={setRepo}
-              onFailChange={setFail}
-              onSubmit={submit}
-            />
+            {project ? (
+              <p className="mt-7 break-all text-note text-mute">
+                {project.repo}
+              </p>
+            ) : (
+              <DeployForm
+                repo={repo}
+                fail={fail}
+                error={error}
+                disabled={disabled || entry.busy}
+                inputRef={input}
+                onRepoChange={setRepo}
+                onFailChange={setFail}
+                onSubmit={submit}
+              />
+            )}
             {flowerAvailable && dashboardReady && (
               <p className="text-caption text-mute">
                 꽃을 누르면 대시보드로 이동해요.
@@ -171,9 +194,16 @@ export function LandingPage({
                 finished={finished}
                 onReset={restart}
                 resetDisabled={entry.busy}
+                resetLabel={project ? "내 프로젝트로" : undefined}
                 actions={fallbackEntry}
               >
-                {state.result?.outcome === "succeeded" && (
+                {project && (
+                  <>
+                    <b className="font-semibold text-ink">{project.name}</b>{" "}
+                    프로젝트가 정상 배포됐어요.
+                  </>
+                )}
+                {!project && state.result?.outcome === "succeeded" && (
                   <>
                     <b className="font-semibold text-ink">
                       {state.result.repo}
@@ -199,7 +229,11 @@ export function LandingPage({
         role="status"
         className="pointer-events-none fixed inset-x-6 bottom-6 z-20 text-center text-caption text-mute"
       >
-        {entry.busy ? "대시보드로 이동 중입니다." : entry.message}
+        {entry.phase === "checking"
+          ? "진입 권한을 확인하고 있어요."
+          : entry.busy
+            ? "대시보드로 이동 중입니다."
+            : entry.message}
       </p>
     </>
   );

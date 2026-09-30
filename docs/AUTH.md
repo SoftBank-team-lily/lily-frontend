@@ -1,6 +1,6 @@
 # 로그인·회원가입과 사용자별 관리 계획
 
-상태: **T13~T17 완료 — T18 구현 중**
+상태: **T13~T18 구현 완료 — 실제 사용자 흐름 검증은 별도**
 
 ## 1. 목표와 범위
 
@@ -25,39 +25,39 @@
 “사용자별 관리”는 우선 **본인 계정과 본인 프로젝트 관리**로 정의합니다.
 관리자가 다른 회원을 관리하는 기능은 별도 요청에 따라 추가합니다.
 
-## 2. 구현 전에 확정할 것 — T13
+## 2. 확정한 API·개발 환경 — T13
 
 사용자 요청에 따라 API도 이 저장소에서 구현합니다. T13에서 아래 구성을 확정했습니다.
 
-| 항목 | 초안 / 확인할 내용 |
-|---|---|
-| 인증 서버 | Next.js Node.js Route Handler + Better Auth 1.7.6, 이 저장소에서 직접 운영 |
-| 로그인 수단 | 이메일·비밀번호, 이메일 인증 후 로그인 |
-| 계정 저장 | PostgreSQL 17, Docker Compose의 독립된 Lily DB와 영속 볼륨 |
-| 세션 | DB 세션, HttpOnly·SameSite 쿠키, 운영 HTTPS에서는 Secure, 7일 만료 |
-| 메일 | Nodemailer SMTP. 개발은 Mailpit, 운영은 SMTP_URL·MAIL_FROM 설정 |
-| 프로젝트 API | 이 저장소에서 직접 구현. UUID 프로젝트·배포 ID, 세션으로 소유자 결정 |
-| 대시보드 | 목적지 미정. DASHBOARD_URL 연결 전에는 준비 중 안내, 외부 앱의 SSO는 별도 연동 |
+| 항목         | 확정한 구성                                                                    |
+| ------------ | ------------------------------------------------------------------------------ |
+| 인증 서버    | Next.js Node.js Route Handler + Better Auth 1.7.6, 이 저장소에서 직접 운영     |
+| 로그인 수단  | 이메일·비밀번호, 이메일 인증 후 로그인                                         |
+| 계정 저장    | PostgreSQL 17, Docker Compose의 독립된 Lily DB와 영속 볼륨                     |
+| 세션         | DB 세션, HttpOnly·SameSite 쿠키, 운영 HTTPS에서는 Secure, 7일 만료             |
+| 메일         | Nodemailer SMTP. 개발은 Mailpit, 운영은 SMTP_URL·MAIL_FROM 설정                |
+| 프로젝트 API | 이 저장소에서 직접 구현. UUID 프로젝트·배포 ID, 세션으로 소유자 결정           |
+| 대시보드     | 목적지 미정. DASHBOARD_URL 연결 전에는 준비 중 안내, 외부 앱의 SSO는 별도 연동 |
 
 백엔드 없이 로컬 저장소에 계정을 저장하는 기능은 실제 회원가입 완료로 취급하지 않습니다.
 개발용 목업은 명시적으로 구분하고, 실제 계정·프로젝트 저장 완료와 별도로 기록합니다.
-자체 인증 서버가 필요하면 프런트엔드 변경과 서버 작업의 담당 저장소를 함께 정합니다.
+인증·프로젝트 서버와 UI를 모두 이 저장소에서 운영합니다.
 
 ### 구현할 API
 
-| 경로 | 역할 |
-|---|---|
-| `POST /api/auth/sign-up/email` | 계정 생성·인증 메일 |
-| `POST /api/auth/sign-in/email`, `POST /api/auth/sign-out` | 로그인·세션 무효화 |
-| `GET /api/auth/get-session` | 현재 세션 |
-| `POST /api/auth/update-user` | 본인 표시 이름 수정 |
-| `/api/auth/send-verification-email`, `/api/auth/verify-email` | 이메일 인증 |
-| `/api/auth/request-password-reset`, `/api/auth/reset-password` | 비밀번호 복구 |
-| `GET /api/projects`, `POST /api/projects` | 본인 프로젝트 목록·등록 |
-| `GET /api/projects/:id`, `PATCH /api/projects/:id` | 소유 프로젝트 상세·이름 수정 |
-| `GET /api/projects/:id/deployments`, `POST /api/projects/:id/deployments` | 기록 조회·배포 대기 기록 생성 |
-| `POST /api/internal/deployments/:id/events` | 실행기 전용 키로 실제 배포 상태 전달 |
-| `GET /api/projects/:id/entry` | 소유권·최신 배포 성공 확인 후 대시보드 진입 정보 |
+| 경로                                                                      | 역할                                             |
+| ------------------------------------------------------------------------- | ------------------------------------------------ |
+| `POST /api/auth/sign-up/email`                                            | 계정 생성·인증 메일                              |
+| `POST /api/auth/sign-in/email`, `POST /api/auth/sign-out`                 | 로그인·세션 무효화                               |
+| `GET /api/auth/get-session`                                               | 현재 세션                                        |
+| `POST /api/auth/update-user`                                              | 본인 표시 이름 수정                              |
+| `/api/auth/send-verification-email`, `/api/auth/verify-email`             | 이메일 인증                                      |
+| `/api/auth/request-password-reset`, `/api/auth/reset-password`            | 비밀번호 복구                                    |
+| `GET /api/projects`, `POST /api/projects`                                 | 본인 프로젝트 목록·등록                          |
+| `GET /api/projects/:id`, `PATCH /api/projects/:id`                        | 소유 프로젝트 상세·이름 수정                     |
+| `GET /api/projects/:id/deployments`, `POST /api/projects/:id/deployments` | 기록 조회·배포 대기 기록 생성                    |
+| `POST /api/internal/deployments/:id/events`                               | 실행기 전용 키로 실제 배포 상태 전달             |
+| `GET /api/projects/:id/entry`                                             | 소유권·최신 배포 성공 확인 후 대시보드 진입 정보 |
 
 인증 API는 Better Auth가 제공하는 서버 핸들러를 사용합니다. 프로젝트·배포 API는 직접 구현합니다.
 일반 사용자가 배포 성공 상태를 임의로 등록할 수 없습니다. 배포 기록 생성은 `queued` 상태만
@@ -109,7 +109,7 @@
   클라이언트가 넘긴 성공 상태나 `ownerId`를 권한 판단에 사용하지 않습니다.
 - 프로젝트가 여전히 유효하고 사용자에게 권한이 있으면 꽃술 확대와
   `onEnterDashboard` 연결을 실행합니다. 타인 프로젝트·삭제된 프로젝트는 진입을 막습니다.
-- 실제 프로젝트 API·대시보드 목적지가 연결되기 전에는 현재 “연결 준비 중” 동작을 유지합니다.
+- 프로젝트 API는 연결했습니다. 대시보드 목적지가 미설정이면 “연결 준비 중” 동작을 유지합니다.
 
 ## 4. 인증과 권한 구조
 
@@ -118,8 +118,7 @@
 
 - 세션 읽기와 인증 서비스 호출을 `lib/auth`의 서버 모듈에 모읍니다.
 - 로그인·회원가입 폼은 Client Component, 보호된 데이터 조회는 서버에서 처리합니다.
-- 프런트엔드 API 경계가 필요하면 Route Handler 또는 Server Action을 사용합니다.
-  기존 백엔드가 있으면 인증 시스템을 중복 구현하지 않습니다.
+- API 경계는 Next.js Node.js Route Handler로 구현했습니다.
 - 세션 쿠키의 HttpOnly·Secure(운영 HTTPS)·SameSite·만료 정책과 로그아웃 처리를
   인증 시스템에 맞춰 정합니다. 세션·비밀번호를 localStorage에 저장하지 않습니다.
 - 비밀번호 저장·해시, 로그인 시도 제한, 쿠키 기반 변경 요청의 CSRF 처리는
@@ -136,33 +135,33 @@
 
 ## 5. 사용자와 프로젝트 연결
 
-서버 데이터 계약의 초안이며, 실제 모델·필드명은 기존 API에 맞춥니다.
+구현한 서버 데이터 계약입니다. 상세 입력·응답은 [API.md](./API.md)를 참고합니다.
 
-| 데이터 | 주요 필드 | 관리 주체 |
-|---|---|---|
-| 사용자 | `id`, `email`, `displayName`, `emailVerified` | 인증 서버 |
-| 세션 | 사용자 연결, 만료·무효화 정보 | 인증 서버 / 인증 서비스 |
-| 프로젝트 | `id`, `ownerId`, `repo`, `name` | 프로젝트 서버 |
-| 배포 기록 | `id`, `projectId`, `status`, `finishedAt` | 프로젝트 / 배포 서버 |
+| 데이터    | 주요 필드                                 | 관리 주체               |
+| --------- | ----------------------------------------- | ----------------------- |
+| 사용자    | `id`, `email`, `name`, `emailVerified`    | 인증 서버               |
+| 세션      | 사용자 연결, 만료·무효화 정보             | 인증 서버 / 인증 서비스 |
+| 프로젝트  | `id`, `ownerId`, `repo`, `name`           | 프로젝트 서버           |
+| 배포 기록 | `id`, `projectId`, `status`, `finishedAt` | 프로젝트 / 배포 서버    |
 
 `ownerId`는 서버가 로그인 세션에서 결정합니다. 목록 조회는 해당 사용자 프로젝트만 반환하고,
 상세 조회·변경은 매번 프로젝트 소유권을 확인합니다. 프로젝트 생성·배포 기록 저장의
 중복 요청 처리도 서버 계약에 포함합니다. `slug`는 표시용이며 권한 식별자로 사용하지 않습니다.
 
-현재 [DASHBOARD.md](./DASHBOARD.md)의 `DashboardEntry.result`는 시연 결과입니다.
-T18에서 실제 연결을 추가할 때 서버 프로젝트 ID를 포함하는 진입 데이터로 확장하되,
-확대 연출과 인증·프로젝트 처리는 서로 분리합니다.
+[DASHBOARD.md](./DASHBOARD.md)의 `DashboardEntry`에 서버 `projectId`를 추가했습니다.
+`result`는 꽃 표현용이며 소유권 판단에는 사용하지 않습니다. `HomeClient`가 권한을 확인하고
+`useDashboardEntry`는 확대·복귀 연출을 관리합니다.
 
 ## 6. 추가 태스크
 
-| ID | 태스크 | 주요 산출물 | 의존 | 완료 기준 |
-|---|---|---|---|---|
-| T13 | 인증·프로젝트 API 계약 확정 | 이 문서의 결정 사항, 환경 변수·서버 작업 목록 | — | 인증 주체·계정 저장·세션·메일·프로젝트 API·대시보드 연동 방식 확정 |
-| T14 | 로그인·회원가입 화면 | `/login`, `/signup`, `components/auth/LoginForm.tsx`, `SignupForm.tsx` | T13 | 기존 디자인 토큰 사용, 입력 검증·오류·로딩·중복 제출 처리, 모바일·키보드 대응 |
-| T15 | 계정 생성·세션 연결 | `lib/auth/types.ts`, `session.ts`, 필요 시 `actions.ts` 또는 Route Handler | T13, T14 | 실제 계정 생성·로그인·새로고침 유지·만료·로그아웃, 내비 상태 표시 |
-| T16 | 내 계정과 계정 복구 | `/account`, 계정 폼, 인증·재설정 페이지(인증 시스템에 맞춤) | T15 | 본인 정보 조회·표시 이름 저장, 인증 메일·비밀번호 복구, 보호된 경로 처리 |
-| T17 | 사용자별 프로젝트 소유권 | `lib/projects/types.ts`, `api.ts`, 서버 API·저장소 작업 | T13, T15 | 서버에 사용자와 프로젝트 연결, 목록·상세·변경 권한 검사, 다른 사용자 데이터 차단 |
-| T18 | 로그인과 꽃 진입 통합 | 랜딩 연결 컴포넌트, `lib/dashboard/types.ts`, 연결 문서 | T12, T15, T17 | 성공한 본인 프로젝트만 진입, 미로그인 복귀·세션 만료·권한 거부 처리 |
+| ID  | 태스크                      | 주요 산출물                                                                | 의존          | 완료 기준                                                                        |
+| --- | --------------------------- | -------------------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------- |
+| T13 | 인증·프로젝트 API 계약 확정 | 이 문서의 결정 사항, 환경 변수·서버 작업 목록                              | —             | 인증 주체·계정 저장·세션·메일·프로젝트 API·대시보드 연동 방식 확정               |
+| T14 | 로그인·회원가입 화면        | `/login`, `/signup`, `components/auth/LoginForm.tsx`, `SignupForm.tsx`     | T13           | 기존 디자인 토큰 사용, 입력 검증·오류·로딩·중복 제출 처리, 모바일·키보드 대응    |
+| T15 | 계정 생성·세션 연결         | `lib/auth/types.ts`, `session.ts`, 필요 시 `actions.ts` 또는 Route Handler | T13, T14      | 실제 계정 생성·로그인·새로고침 유지·만료·로그아웃, 내비 상태 표시                |
+| T16 | 내 계정과 계정 복구         | `/account`, 계정 폼, 인증·재설정 페이지(인증 시스템에 맞춤)                | T15           | 본인 정보 조회·표시 이름 저장, 인증 메일·비밀번호 복구, 보호된 경로 처리         |
+| T17 | 사용자별 프로젝트 소유권    | `lib/projects/types.ts`, `api.ts`, 서버 API·저장소 작업                    | T13, T15      | 서버에 사용자와 프로젝트 연결, 목록·상세·변경 권한 검사, 다른 사용자 데이터 차단 |
+| T18 | 로그인과 꽃 진입 통합       | 랜딩 연결 컴포넌트, `lib/dashboard/types.ts`, 연결 문서                    | T12, T15, T17 | 성공한 본인 프로젝트만 진입, 미로그인 복귀·세션 만료·권한 거부 처리              |
 
 대시보드 프로젝트 목록 화면은 이 태스크에 포함하지 않습니다.
 T17은 계정 화면의 프로젝트 등록·이름 수정·본인 목록과 데이터·API 연결을 준비합니다.
@@ -182,3 +181,14 @@ T17은 계정 화면의 프로젝트 등록·이름 수정·본인 목록과 데
 
 자동 테스트 추가·실행은 별도 요청이 있을 때 진행합니다.
 실제 인증·프로젝트 서버에 연결되기 전에는 계정 관리 구현 완료로 표시하지 않습니다.
+
+## 8. 구현 기록
+
+- T13~T18을 순서대로 구현하고 태스크마다 로컬 커밋했습니다.
+- PostgreSQL·Mailpit을 Lily 전용 Docker Compose로 실행하고 DB 마이그레이션을 적용했습니다.
+- 인증·프로젝트 변경 요청의 Origin 검사, 요청 크기 제한, DB 기반 요청 제한을 적용했습니다.
+- 계정 변경·로그아웃 시 이전 계정의 프로젝트 화면을 숨기고 서버 데이터를 갱신합니다.
+- 실제 성공 프로젝트는 `ReadyProject` 타입으로 전달하며 확대 전과 실제 이동 전에 권한을 재확인합니다.
+- 타입 검사·린트·프로덕션 빌드를 수행합니다. 자동 테스트는 추가·실행하지 않았습니다.
+- 회원가입 → 메일 인증 → 로그인·복구·계정 간 권한 거부의 실제 사용자 흐름은 별도 검증이 필요합니다.
+- 실제 배포 실행 엔진·운영 SMTP·대시보드 목적지·외부 앱 SSO는 후속 연동 사항입니다.

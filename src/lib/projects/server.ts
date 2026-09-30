@@ -211,5 +211,11 @@ export async function getProjectEntry(
     url.searchParams.set("project", result.id);
     destination = url.toString();
   }
-  return { project: result, destination };
+  return {
+    project: {
+      ...result,
+      latestDeployment: { id: result.latestDeployment.id, status: "succeeded" },
+    },
+    destination,
+  };
 }
