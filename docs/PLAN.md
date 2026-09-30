@@ -518,6 +518,9 @@ class FlowerScene {
   4. `test: 기준 화면 스크린샷 비교 하네스 추가`
 
 ### T4. 도메인 로직
+
+- **상태**: 완료. build·lint·typecheck와 15개 테스트 통과.
+- **기준 차이**: 원본은 `.git` 제거 후 `/`를 제거하므로 `o/r.git/`는 `o/r.git`로 파싱합니다. 원본 동작을 유지했습니다. reduced motion의 300ms 상한은 성공 스텝(최대 266.7ms)에 영향을 주지 않고 롤백 대기만 줄입니다. 타이머의 소수 ms 절삭 때문에 시간 검증은 ±50ms 이내입니다.
 - **작업**
   - `parseRepo`, `toSlug`
   - `types.ts`, `stages.ts`, `simulateDeploy`(AbortSignal 지원, reduced motion이면 대기 최대 300ms), `deployReducer`, `selectFlowerTargets`, `useDeploy`
