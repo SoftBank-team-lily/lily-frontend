@@ -5,10 +5,13 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthNav } from "@/components/auth/AuthNav";
 import { AccountForm } from "@/components/auth/AccountForm";
 import { PasswordForm } from "@/components/auth/PasswordForm";
+import { listProjects } from "@/lib/projects/server";
+import { ProjectList } from "@/components/projects/ProjectList";
 
 export default async function AccountPage() {
   const user = await getUser();
   if (!user) redirect("/login?next=%2Faccount");
+  const projects = await listProjects(user.id);
   return (
     <AuthShell
       title="내 계정"
@@ -16,6 +19,7 @@ export default async function AccountPage() {
       navigation={<AuthNav user={user} />}
     >
       <AccountForm key={user.id} user={user} />
+      <ProjectList key={user.id} initialPage={projects} />
       <section
         className="mt-10 border-t border-line pt-8"
         aria-labelledby="password-title"

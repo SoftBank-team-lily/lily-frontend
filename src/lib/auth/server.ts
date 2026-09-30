@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { after } from "next/server";
 import { db } from "@/lib/db";
+import { consumeLimit } from "@/lib/limits";
 import { sendAuthMail } from "./mail";
 
 const baseURL = process.env.BETTER_AUTH_URL;
@@ -102,7 +103,9 @@ export const auth = betterAuth({
   },
   rateLimit: {
     enabled: true,
-    storage: "database",
+    customStorage: {
+      consume: (key, rule) => consumeLimit(`auth:${key}`, rule),
+    },
     window: 60,
     max: 100,
     customRules: {
