@@ -6,9 +6,17 @@ export type EntryControls = {
   return: (onComplete: () => void) => void;
 };
 
+export type FlowerArea = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export function entryView(center: View["look"], aspect: number): View {
   const distance = Math.max(
-    FLOWER_ENTRY.radius / (Math.tan((CAMERA.fov * Math.PI) / 360) * Math.min(1, aspect)),
+    FLOWER_ENTRY.radius /
+      (Math.tan((CAMERA.fov * Math.PI) / 360) * Math.min(1, aspect)),
     CAMERA.near + FLOWER_ENTRY.clearance,
   );
   return {

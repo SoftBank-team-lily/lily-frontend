@@ -8,6 +8,7 @@ import { STAGES, REPO_ERROR, ROLLBACK_MESSAGE } from "@/lib/deploy/stages";
 import type { DeployResult } from "@/lib/deploy/types";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
+import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
 import { DeployStatus } from "@/components/deploy/DeployStatus";
 import { FlowerCanvas } from "@/components/flower/FlowerCanvas";
 import { SiteNav } from "@/components/layout/SiteNav";
@@ -26,6 +27,8 @@ export function LandingPage({
   const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const entry = useDashboardEntry();
+  const [flowerAvailable, setFlowerAvailable] = useState(false);
   const { state, start, reset } = useDeploy({ reducedMotion, onComplete });
   const getSlot = useCallback(
     () => ({
@@ -44,9 +47,22 @@ export function LandingPage({
   );
   const disabled = state.phase !== "idle";
   const finished = state.phase === "succeeded" || state.phase === "rolled-back";
+  const entryDisabled =
+    entry.busy || (!finished && disabled) || !flowerAvailable;
+  const getEntrySlot = useCallback(
+    () => ({
+      top: nav.current?.getBoundingClientRect().bottom ?? 64,
+      bottom: section.current
+        ? section.current.getBoundingClientRect().top +
+          parseFloat(getComputedStyle(section.current).paddingTop) -
+          16
+        : 0,
+    }),
+    [],
+  );
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled) return;
+    if (disabled || entry.busy) return;
     const parsed = parseRepo(repo);
     if (!parsed) {
       setError(REPO_ERROR);
@@ -57,6 +73,7 @@ export function LandingPage({
     start(parsed, fail);
   }
   function restart() {
+    if (entry.busy) return;
     flushSync(() => reset());
     input.current?.focus();
   }
@@ -74,61 +91,87 @@ export function LandingPage({
         getSlot={getSlot}
         reducedMotion={reducedMotion}
         targets={selectFlowerTargets(state)}
+        controlsRef={entry.controls}
+        getEntrySlot={getEntrySlot}
+        entryDisabled={entryDisabled}
+        onAvailable={setFlowerAvailable}
+        onEnter={() => {
+          if (!entryDisabled) entry.enter();
+        }}
       />
-      <SiteNav ref={nav} />
-      <main className="relative z-1">
-        <Reveal
-          ref={section}
-          id="deploy"
-          className="mx-auto flex min-h-screen max-w-page flex-col items-center px-6 pt-[52vh] pb-[6vh] text-center"
-        >
-          <div className="max-w-lg break-keep text-shadow-halo">
-            <h2 className="mb-[0.8rem] text-display font-semibold">
-              지금 피워 보세요.
-            </h2>
-            <p className="text-lead text-mute">
-              배포가 진행될수록 꽃에 색이 번져요. 이 화면은 시연용이라 실제
-              배포는 일어나지 않아요.
-            </p>
-          </div>
-          <DeployForm
-            repo={repo}
-            fail={fail}
-            error={error}
-            disabled={disabled}
-            inputRef={input}
-            onRepoChange={setRepo}
-            onFailChange={setFail}
-            onSubmit={submit}
-          />
-          {disabled && (
-            <DeployStatus
-              stage={stage}
-              step={state.index + 1}
-              fractions={state.fractions}
-              failedIndex={state.failedIndex}
-              finished={finished}
-              onReset={restart}
-            >
-              {state.result?.outcome === "succeeded" && (
-                <>
-                  <b className="font-semibold text-ink">{state.result.repo}</b>
-                  가 피었어요. 주소는{" "}
-                  <a
-                    href="#"
-                    className="text-ink underline"
-                    onClick={(event) => event.preventDefault()}
-                  >
-                    {state.result.slug}.lily.app
-                  </a>
-                  이고, 모니터링 화면에서 상태를 계속 볼 수 있어요.
-                </>
-              )}
-              {state.result?.outcome === "rolled-back" && ROLLBACK_MESSAGE}
-            </DeployStatus>
-          )}
-        </Reveal>
-      </main>
+      <div
+        className="landing-content"
+        data-entry-phase={entry.phase}
+        inert={entry.busy}
+      >
+        <SiteNav ref={nav} />
+        <main className="relative z-1">
+          <Reveal
+            ref={section}
+            id="deploy"
+            className="mx-auto flex min-h-screen max-w-page flex-col items-center px-6 pt-[52vh] pb-[6vh] text-center"
+          >
+            <div className="max-w-lg break-keep text-shadow-halo">
+              <h2 className="mb-[0.8rem] text-display font-semibold">
+                지금 피워 보세요.
+              </h2>
+              <p className="text-lead text-mute">
+                배포가 진행될수록 꽃에 색이 번져요. 이 화면은 시연용이라 실제
+                배포는 일어나지 않아요.
+              </p>
+            </div>
+            <DeployForm
+              repo={repo}
+              fail={fail}
+              error={error}
+              disabled={disabled || entry.busy}
+              inputRef={input}
+              onRepoChange={setRepo}
+              onFailChange={setFail}
+              onSubmit={submit}
+            />
+            {flowerAvailable && (
+              <p className="text-caption text-mute">
+                꽃을 누르면 대시보드로 이동해요.
+              </p>
+            )}
+            {disabled && (
+              <DeployStatus
+                stage={stage}
+                step={state.index + 1}
+                fractions={state.fractions}
+                failedIndex={state.failedIndex}
+                finished={finished}
+                onReset={restart}
+              >
+                {state.result?.outcome === "succeeded" && (
+                  <>
+                    <b className="font-semibold text-ink">
+                      {state.result.repo}
+                    </b>
+                    가 피었어요. 주소는{" "}
+                    <a
+                      href="#"
+                      className="text-ink underline"
+                      onClick={(event) => event.preventDefault()}
+                    >
+                      {state.result.slug}.lily.app
+                    </a>
+                    이고, 모니터링 화면에서 상태를 계속 볼 수 있어요.
+                  </>
+                )}
+                {state.result?.outcome === "rolled-back" && ROLLBACK_MESSAGE}
+              </DeployStatus>
+            )}
+          </Reveal>
+        </main>
+      </div>
+      <p
+        role="status"
+        className="pointer-events-none fixed inset-x-6 bottom-6 z-20 text-center text-caption text-mute"
+      >
+        {entry.busy ? "대시보드로 이동 중입니다." : entry.message}
+      </p>
     </>
   );
 }

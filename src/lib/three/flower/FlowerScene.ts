@@ -11,9 +11,15 @@ import {
 import { readColorToken } from "@/lib/design/readColorToken";
 import type { FlowerTargets } from "@/lib/deploy/types";
 import { damp } from "../damp";
-import { CAMERA, FLOWER_ENTRY, FLOWER_MOTION, PARTICLES } from "./config";
+import {
+  CAMERA,
+  FLOWER,
+  FLOWER_ENTRY,
+  FLOWER_MOTION,
+  PARTICLES,
+} from "./config";
 import { fitView, type FlowerSlot, type View } from "./fitView";
-import { blendView, entryView } from "./entry";
+import { blendView, entryView, type FlowerArea } from "./entry";
 import {
   buildDustAttributes,
   buildFlowerAttributes,
@@ -31,6 +37,8 @@ type Options = {
   getSlot: () => FlowerSlot;
   reducedMotion: boolean;
   onEntryProgress?: (opacity: number) => void;
+  onArea?: (area: FlowerArea) => void;
+  onAvailable?: (available: boolean) => void;
 };
 
 export class FlowerScene {
@@ -61,6 +69,9 @@ export class FlowerScene {
   private canvas: HTMLCanvasElement;
   private getSlot: () => FlowerSlot;
   private onEntryProgress?: Options["onEntryProgress"];
+  private onArea?: Options["onArea"];
+  private onAvailable?: Options["onAvailable"];
+  private assembled = false;
   private entry: {
     mode: "zooming" | "entering" | "returning";
     start: number;
@@ -70,11 +81,20 @@ export class FlowerScene {
     onComplete: (() => void) | null;
   } | null = null;
 
-  constructor({ canvas, getSlot, reducedMotion, onEntryProgress }: Options) {
+  constructor({
+    canvas,
+    getSlot,
+    reducedMotion,
+    onEntryProgress,
+    onArea,
+    onAvailable,
+  }: Options) {
     this.canvas = canvas;
     this.getSlot = getSlot;
     this.reducedMotion = reducedMotion;
     this.onEntryProgress = onEntryProgress;
+    this.onArea = onArea;
+    this.onAvailable = onAvailable;
     const surface = readColorToken("--color-surface");
     this.renderer = new WebGLRenderer({
       canvas,
@@ -100,6 +120,7 @@ export class FlowerScene {
       const context = source.getContext("2d");
       if (!context) {
         canvas.dataset.state = "unavailable";
+        this.onAvailable?.(false);
         return;
       }
       context.drawImage(this.image, 0, 0);
@@ -140,7 +161,10 @@ export class FlowerScene {
       this.frame = requestAnimationFrame(this.loop);
     };
     this.image.onerror = () => {
-      if (!this.disposed) canvas.dataset.state = "unavailable";
+      if (!this.disposed) {
+        canvas.dataset.state = "unavailable";
+        this.onAvailable?.(false);
+      }
     };
     this.image.src = "/flower-mask.png";
   }
@@ -151,7 +175,9 @@ export class FlowerScene {
   enter(onComplete: () => void) {
     if (this.disposed || this.entry) return;
     this.flower.updateMatrixWorld(true);
-    const center = this.flower.localToWorld(new Vector3(...FLOWER_ENTRY.center));
+    const center = this.flower.localToWorld(
+      new Vector3(...FLOWER_ENTRY.center),
+    );
     // 시든 꽃의 중심도 현재 렌더 위치에 맞춥니다.
     center.y -= this.uniforms.uWilt.value * 0.06;
     this.entry = {
@@ -190,7 +216,9 @@ export class FlowerScene {
     const duration = returning
       ? FLOWER_ENTRY.returnDuration
       : FLOWER_ENTRY.duration;
-    const t = this.reducedMotion ? 1 : Math.min(1, (now - entry.start) / duration);
+    const t = this.reducedMotion
+      ? 1
+      : Math.min(1, (now - entry.start) / duration);
     const target: View = returning
       ? {
           cam: [this.targetCam.x, this.targetCam.y, this.targetCam.z],
@@ -230,6 +258,36 @@ export class FlowerScene {
       event.clientY / window.innerHeight - 0.5,
     );
   };
+  private reportArea() {
+    if (!this.onArea || this.entry) return;
+    this.camera.updateMatrixWorld();
+    this.flower.updateMatrixWorld(true);
+    const bounds = {
+      left: Infinity,
+      top: Infinity,
+      right: -Infinity,
+      bottom: -Infinity,
+    };
+    for (const x of [FLOWER.cx - FLOWER.hw, FLOWER.cx + FLOWER.hw]) {
+      for (const y of [FLOWER.cy - FLOWER.hh, FLOWER.cy + FLOWER.hh]) {
+        const point = this.flower
+          .localToWorld(new Vector3(x, y, 0))
+          .project(this.camera);
+        const px = ((point.x + 1) / 2) * window.innerWidth;
+        const py = ((1 - point.y) / 2) * window.innerHeight;
+        bounds.left = Math.min(bounds.left, px);
+        bounds.right = Math.max(bounds.right, px);
+        bounds.top = Math.min(bounds.top, py);
+        bounds.bottom = Math.max(bounds.bottom, py);
+      }
+    }
+    this.onArea({
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.right - bounds.left,
+      height: bounds.bottom - bounds.top,
+    });
+  }
   private resize = () => {
     const width = window.innerWidth,
       height = window.innerHeight;
@@ -293,6 +351,11 @@ export class FlowerScene {
           dt,
         );
     this.renderer.render(this.scene, this.camera);
+    this.reportArea();
+    if (!this.assembled && this.uniforms.uAssemble.value === 1) {
+      this.assembled = true;
+      this.onAvailable?.(true);
+    }
     this.frame = requestAnimationFrame(this.loop);
   };
 
@@ -301,6 +364,8 @@ export class FlowerScene {
     this.disposed = true;
     this.entry = null;
     this.onEntryProgress = undefined;
+    this.onArea = undefined;
+    this.onAvailable = undefined;
     cancelAnimationFrame(this.frame);
     window.removeEventListener("pointermove", this.pointer);
     window.removeEventListener("resize", this.resize);

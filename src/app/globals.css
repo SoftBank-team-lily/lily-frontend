@@ -87,6 +87,16 @@
 }
 
 @layer components {
+  .landing-content {
+    transition: opacity 250ms var(--ease-standard);
+  }
+  .landing-content[data-entry-phase="zooming"],
+  .landing-content[data-entry-phase="entering"] {
+    opacity: 0;
+  }
+  .flower-entry:disabled {
+    pointer-events: none;
+  }
   .reveal > * {
     opacity: 0;
     translate: 0 12px;
@@ -102,6 +112,9 @@
     translate: none;
   }
   @media (prefers-reduced-motion: reduce) {
+    .landing-content {
+      transition: none;
+    }
     .reveal > * {
       transition: none;
     }
