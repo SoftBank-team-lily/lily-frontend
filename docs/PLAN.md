@@ -540,6 +540,8 @@ class FlowerScene {
   3. `feat: 배포 리듀서와 useDeploy 훅`
 
 ### T5. 배포 인터랙션 연결
+
+- **상태**: 완료. build·lint·typecheck 및 19개 테스트 통과. 초기·오류·성공·롤백 × 두 뷰포트 8개 DOM 비교 통과(최대 차이 비율 0.002%).
 - **작업**
   - `LandingPage`(client)에서 `useDeploy`와 `DeployForm`·`DeployStatus`를 연결합니다. §4.3 동작을 그대로 구현합니다.
     - 검증 오류와 포커스

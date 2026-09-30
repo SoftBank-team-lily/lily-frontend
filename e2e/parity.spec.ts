@@ -3,8 +3,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
 
-for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
-  test(`초기 화면 ${viewport.width}`, async ({ page, context }, testInfo) => {
+for (const state of ["초기", "오류", "성공", "롤백"]) for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  test(`${state} 화면 ${viewport.width}`, async ({ page, context }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
@@ -19,9 +19,16 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const reference = await context.newPage();
     await reference.setViewportSize(viewport);
     await reference.route("https://cdnjs.cloudflare.com/**", route => route.abort());
-    await reference.route("http://127.0.0.1:3210/reference", async route => route.fulfill({ contentType: "text/html", body: await readFile("docs/reference/landing.html", "utf8") }));
+    await reference.route("http://127.0.0.1:3210/reference", async route => route.fulfill({ contentType: "text/html", body: (await readFile("docs/reference/landing.html", "utf8")).replace(/const IMG = [\s\S]*?\/\/ ---- 배포 시연 ----/, "const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; let progTarget = 0, wiltTarget = 0; // ---- 배포 시연 ----") }));
     await reference.goto("http://127.0.0.1:3210/reference");
     await reference.evaluate(() => document.fonts.ready);
+    for (const target of [page, reference]) {
+      if (state === "초기") continue;
+      await target.getByRole("textbox").fill(state === "오류" ? "bad" : "o/next.js");
+      if (state === "롤백") await target.getByRole("checkbox").check();
+      await target.getByRole("button", { name: "배포 시작" }).click();
+      if (state === "성공" || state === "롤백") await expect(target.getByRole("button", { name: "다시 배포하기" })).toBeVisible({ timeout: 20000 });
+    }
     // 숨기는 대상은 배경 캔버스뿐이며 DOM은 그대로 비교한다.
     await reference.locator("canvas").evaluate(element => element.style.visibility = "hidden");
     await page.locator("canvas").evaluateAll(elements => elements.forEach(element => element.style.visibility = "hidden"));
