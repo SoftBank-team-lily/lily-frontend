@@ -24,3 +24,12 @@ export const CAMERA = {
   margin: 1,
   width: 0.86,
 } as const;
+
+export const FLOWER_ENTRY = {
+  duration: 1200,
+  returnDuration: 650,
+  fadeDuration: 200,
+  radius: 0.23,
+  clearance: 0.45,
+  center: [0, 0, -0.45] as const,
+} as const;
