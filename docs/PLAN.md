@@ -375,6 +375,10 @@ class FlowerScene {
 
 ### 5.4 대시보드 연결 지점 (만들지 않음)
 
+**추가 구현:** 꽃 클릭 → 꽃술 확대 → `LandingPage.onEnterDashboard(entry)` 연결점을
+추가했습니다. 아래의 초기 제안보다 [DASHBOARD.md](./DASHBOARD.md)의 확정 계획을 우선합니다.
+`onComplete`는 배포 종료 이벤트로 유지하며 자동 이동에 사용하지 않습니다.
+
 - **완료 콜백**: `DeploySection`에 `onComplete(result: DeployResult)`를 열어 둡니다. 지금 랜딩에서는 아무것도 하지 않습니다(원본과 동일).
   - 대시보드가 생기면 이 콜백에서 이동합니다(예: `router.push(\`/dashboard/${result.slug}\`)`).
   - "대시보드로 이동" 버튼이 필요하면 `DeployStatus`의 액션 slot에 `<Button variant="ghost">`를 하나 더 넣습니다.

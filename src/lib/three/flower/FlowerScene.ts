@@ -72,6 +72,7 @@ export class FlowerScene {
   private onArea?: Options["onArea"];
   private onAvailable?: Options["onAvailable"];
   private assembled = false;
+  private contextLost = false;
   private entry: {
     mode: "zooming" | "entering" | "returning";
     start: number;
@@ -112,8 +113,9 @@ export class FlowerScene {
     this.look.copy(this.targetLook);
     window.addEventListener("pointermove", this.pointer);
     window.addEventListener("resize", this.resize);
+    canvas.addEventListener("webglcontextlost", this.contextLoss);
     this.image.onload = () => {
-      if (this.disposed) return;
+      if (this.disposed || this.contextLost) return;
       const source = document.createElement("canvas");
       source.width = this.image.width;
       source.height = this.image.height;
@@ -174,6 +176,10 @@ export class FlowerScene {
   }
   enter(onComplete: () => void) {
     if (this.disposed || this.entry) return;
+    if (this.contextLost) {
+      onComplete();
+      return;
+    }
     this.flower.updateMatrixWorld(true);
     const center = this.flower.localToWorld(
       new Vector3(...FLOWER_ENTRY.center),
@@ -191,7 +197,7 @@ export class FlowerScene {
   }
   returnFromEntry(onComplete: () => void) {
     if (this.disposed) return;
-    if (!this.entry) {
+    if (!this.entry || this.contextLost) {
       onComplete();
       return;
     }
@@ -258,6 +264,17 @@ export class FlowerScene {
       event.clientY / window.innerHeight - 0.5,
     );
   };
+  private contextLoss = () => {
+    if (this.disposed) return;
+    this.contextLost = true;
+    cancelAnimationFrame(this.frame);
+    this.canvas.dataset.state = "unavailable";
+    this.onAvailable?.(false);
+    const complete = this.entry?.onComplete;
+    this.entry = null;
+    this.onEntryProgress?.(0);
+    complete?.();
+  };
   private reportArea() {
     if (!this.onArea || this.entry) return;
     this.camera.updateMatrixWorld();
@@ -289,6 +306,7 @@ export class FlowerScene {
     });
   }
   private resize = () => {
+    if (this.disposed || this.contextLost) return;
     const width = window.innerWidth,
       height = window.innerHeight;
     this.renderer.setSize(width, height, false);
@@ -304,7 +322,7 @@ export class FlowerScene {
     this.targetLook.set(...view.look);
   };
   private loop = (now: number) => {
-    if (this.disposed) return;
+    if (this.disposed || this.contextLost) return;
     const dt = Math.min(0.05, Math.max(0, (now - this.last) / 1000));
     this.last = now;
     const reduce = this.reducedMotion;
@@ -324,6 +342,7 @@ export class FlowerScene {
       this.flower.rotation.x = this.smoothMouse.y * 0.18;
       this.flower.rotation.y = this.smoothMouse.x * 0.28;
     }
+    if (this.disposed || this.contextLost) return;
     this.camera.position.copy(this.cam);
     this.camera.lookAt(this.look);
     this.uniforms.uProgress.value = reduce
@@ -356,7 +375,8 @@ export class FlowerScene {
       this.assembled = true;
       this.onAvailable?.(true);
     }
-    this.frame = requestAnimationFrame(this.loop);
+    if (!this.disposed && !this.contextLost)
+      this.frame = requestAnimationFrame(this.loop);
   };
 
   dispose() {
@@ -369,6 +389,7 @@ export class FlowerScene {
     cancelAnimationFrame(this.frame);
     window.removeEventListener("pointermove", this.pointer);
     window.removeEventListener("resize", this.resize);
+    this.canvas.removeEventListener("webglcontextlost", this.contextLoss);
     this.image.onload = null;
     this.image.onerror = null;
     this.image.removeAttribute("src");

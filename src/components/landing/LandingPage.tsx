@@ -6,6 +6,7 @@ import { selectFlowerTargets } from "@/lib/deploy/deployReducer";
 import { useDeploy } from "@/lib/deploy/useDeploy";
 import { STAGES, REPO_ERROR, ROLLBACK_MESSAGE } from "@/lib/deploy/stages";
 import type { DeployResult } from "@/lib/deploy/types";
+import type { DashboardHandler } from "@/lib/dashboard/types";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
@@ -14,11 +15,14 @@ import { FlowerCanvas } from "@/components/flower/FlowerCanvas";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { Reveal } from "@/components/layout/Reveal";
 import { DeployForm } from "@/components/deploy/DeployForm";
+import { Button } from "@/components/ui/Button";
 
 export function LandingPage({
   onComplete,
+  onEnterDashboard,
 }: {
   onComplete?: (result: DeployResult) => void;
+  onEnterDashboard?: DashboardHandler;
 }) {
   const [repo, setRepo] = useState("");
   const [fail, setFail] = useState(false);
@@ -27,9 +31,18 @@ export function LandingPage({
   const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const reducedMotion = usePrefersReducedMotion();
-  const entry = useDashboardEntry();
   const [flowerAvailable, setFlowerAvailable] = useState(false);
   const { state, start, reset } = useDeploy({ reducedMotion, onComplete });
+  const finished = state.phase === "succeeded" || state.phase === "rolled-back";
+  const dashboardReady =
+    state.phase === "succeeded" && state.result?.outcome === "succeeded";
+  const entry = useDashboardEntry({
+    reducedMotion,
+    flowerAvailable,
+    blocked: !dashboardReady,
+    result: state.result,
+    onEnterDashboard,
+  });
   const getSlot = useCallback(
     () => ({
       top:
@@ -46,9 +59,18 @@ export function LandingPage({
     [],
   );
   const disabled = state.phase !== "idle";
-  const finished = state.phase === "succeeded" || state.phase === "rolled-back";
-  const entryDisabled =
-    entry.busy || (!finished && disabled) || !flowerAvailable;
+  const entryDisabled = entry.busy || !dashboardReady || !flowerAvailable;
+  const fallbackEntry =
+    dashboardReady && !flowerAvailable ? (
+      <Button
+        variant="ghost"
+        data-dashboard-entry
+        disabled={entry.busy}
+        onClick={entry.enter}
+      >
+        대시보드로 이동
+      </Button>
+    ) : undefined;
   const getEntrySlot = useCallback(
     () => ({
       top: nav.current?.getBoundingClientRect().bottom ?? 64,
@@ -70,10 +92,12 @@ export function LandingPage({
       return;
     }
     setError("");
+    entry.clearMessage();
     start(parsed, fail);
   }
   function restart() {
     if (entry.busy) return;
+    entry.clearMessage();
     flushSync(() => reset());
     input.current?.focus();
   }
@@ -130,7 +154,7 @@ export function LandingPage({
               onFailChange={setFail}
               onSubmit={submit}
             />
-            {flowerAvailable && (
+            {flowerAvailable && dashboardReady && (
               <p className="text-caption text-mute">
                 꽃을 누르면 대시보드로 이동해요.
               </p>
@@ -143,6 +167,8 @@ export function LandingPage({
                 failedIndex={state.failedIndex}
                 finished={finished}
                 onReset={restart}
+                resetDisabled={entry.busy}
+                actions={fallbackEntry}
               >
                 {state.result?.outcome === "succeeded" && (
                   <>

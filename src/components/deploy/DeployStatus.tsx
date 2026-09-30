@@ -10,6 +10,7 @@ type Props = {
   children?: ReactNode;
   finished?: boolean;
   onReset?: () => void;
+  resetDisabled?: boolean;
   actions?: ReactNode;
 };
 
@@ -21,6 +22,7 @@ export function DeployStatus({
   children,
   finished,
   onReset,
+  resetDisabled,
   actions,
 }: Props) {
   return (
@@ -37,12 +39,16 @@ export function DeployStatus({
         </span>
       </div>
       <div className="mt-3.5 text-note text-mute">{children}</div>
-      {finished && (
-        <Button variant="ghost" className="mt-3.5" onClick={onReset}>
-          다시 배포하기
-        </Button>
+      {(finished || actions) && (
+        <div className="mt-3.5 flex flex-wrap gap-2 max-[641px]:flex-col">
+          {finished && (
+            <Button variant="ghost" disabled={resetDisabled} onClick={onReset}>
+              다시 배포하기
+            </Button>
+          )}
+          {actions}
+        </div>
       )}
-      {actions}
     </div>
   );
 }

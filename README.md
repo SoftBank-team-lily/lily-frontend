@@ -40,11 +40,33 @@ pnpm test:e2e
 - `src/lib/three/flower`: 순수 입자 생성과 씬 수명주기.
 - `src/app/globals.css`: UI와 꽃 색상·타이포그래피 토큰의 단일 원천.
 
-꽃은 별도 번들로 로드됩니다. React는 목표값만 전달하고 프레임 계산은 `FlowerScene`이 수행합니다. `LandingPage`의 선택적 `onComplete(result)` 콜백으로 향후 대시보드를 연결할 수 있습니다. WebGL 초기화가 불가능해도 배포 폼은 사용할 수 있습니다.
+꽃은 별도 번들로 로드됩니다. React는 목표값만 전달하고 프레임 계산은 `FlowerScene`이 수행합니다. WebGL 초기화가 불가능해도 배포 폼은 사용할 수 있습니다.
+
+## 대시보드 진입 연결
+
+배포가 성공한 뒤 꽃을 클릭하면 꽃술로 카메라가 확대되고, 마지막 페이드가 끝날 때
+`LandingPage`의 선택적 `onEnterDashboard(entry)` 콜백을 실행합니다.
+hover 시 클릭 영역의 배경·테두리는 표시하지 않습니다. 키보드 포커스만 표시합니다.
+배포 전·진행 중·롤백 후에는 진입을 막고, 확대 중 Escape로 취소할 수 있습니다.
+
+`entry`는 `{ source: "flower", result: DeployResult & { outcome: "succeeded" } }`입니다.
+연결 콜백에는 성공한 프로젝트의 결과를 반드시 전달합니다.
+`onComplete(result)`는 기존 배포 종료 이벤트이고, 대시보드 이동은 따로 연결합니다.
+
+실제 연결은 Client Component에서 합니다. 같은 앱이면 `next/navigation`의
+`router.push(확정된 경로)`를 콜백에서 실행하고, 외부 앱이면 확정된 URL로 이동합니다.
+Server Component인 `app/page.tsx`에서 일반 함수 콜백을 직접 넘기지 않습니다.
+비동기 연결은 Promise를 반환해 이동 작업이 끝날 때까지 기다릴 수 있습니다.
+
+현재 목적지와 콜백은 연결하지 않았습니다. “대시보드 연결 준비 중입니다.”를
+표시하고 랜딩으로 복귀합니다. 콜백 실패 시에도 복귀하며 배포 결과를 유지합니다.
+모션 감소 설정에서는 확대를 생략합니다. 꽃 로딩·WebGL 오류 시에는
+“대시보드로 이동” 대체 버튼을 사용합니다.
 
 ## 문서
 
 - [구현 계획](docs/PLAN.md)
+- [꽃 확대·대시보드 연결](docs/DASHBOARD.md)
 - [디자인 규칙](docs/DESIGN.md)
 - [검증 결과와 남은 확인](docs/QA.md)
 - [기준 화면](docs/reference/landing.html)

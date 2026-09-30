@@ -39,6 +39,7 @@ export default function FlowerCanvasClient({
   }, [getEntrySlot, onAvailable]);
   useEffect(() => {
     if (!host.current) return;
+    callbacks.current.onAvailable?.(false);
     // 해제된 WebGL 컨텍스트가 남은 canvas를 StrictMode에서 재사용하지 않습니다.
     const canvas = document.createElement("canvas");
     canvas.id = "gl";
