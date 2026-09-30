@@ -2,10 +2,10 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 
-describe("초기 페이지", () => {
-  it("샘플 콘텐츠 없이 빈 main 영역을 렌더링한다", () => {
+describe("랜딩 페이지", () => {
+  it("시연 안내와 이름이 있는 입력을 표시한다", () => {
     render(<Home />);
-
-    expect(screen.getByRole("main")).toBeEmptyDOMElement();
+    expect(screen.getByRole("heading", { name: "지금 피워 보세요." })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "GitHub 레포 주소" })).toBeInTheDocument();
   });
 });

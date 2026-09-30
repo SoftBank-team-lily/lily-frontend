@@ -9,7 +9,8 @@
     "lint": "eslint && node scripts/check-design-tokens.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "next": "16.3.7",

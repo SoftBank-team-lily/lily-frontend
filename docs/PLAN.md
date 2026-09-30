@@ -502,6 +502,8 @@ class FlowerScene {
   3. `chore: 색상 하드코딩 검사 스크립트를 lint에 연결`
 
 ### T3. UI 프리미티브·정적 레이아웃
+
+- **상태**: 완료. build·lint·typecheck·test 통과, 두 뷰포트의 초기 DOM 픽셀 차이 0. 한글 IBM Plex 렌더링 확인으로 T2 추가 검증 완료.
 - **작업**
   - `Button`(primary·ghost), `TextField`, `OptionCheckbox`, `SegmentedProgress`(`segments`, `fractions`, `failedIndex`), `SiteNav`, `Reveal`(지연값은 `lib/motion.ts`)
   - `usePrefersReducedMotion`

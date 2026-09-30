@@ -68,3 +68,16 @@
   }
   button:not(:disabled) { cursor: pointer; }
 }
+
+@layer components {
+  .reveal > * {
+    opacity: 0;
+    translate: 0 12px;
+    transition: opacity 1s var(--ease-standard), translate 1s var(--ease-standard);
+  }
+  .reveal > [role="alert"] { translate: none; }
+  .reveal[data-visible="true"] > * { opacity: 1; translate: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal > * { transition: none; }
+  }
+}
