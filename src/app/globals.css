@@ -3,12 +3,68 @@
 @theme {
   --color-*: initial;
   --color-surface: #000000;
+  --color-ink: #F2F0EC;
+  --color-mute: #8C8B88;
+  --color-accent: #E0567E;
+  --color-danger: #D6453D;
+  --color-rollback: #8C7560;
+  --color-warning: #E9A53A;
+
+  --container-page: 1080px;
+
+  --text-display: clamp(1.8rem, 4vw, 2.75rem);
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: -0.025em;
+  --text-lead: 1.0625rem;
+  --text-lead--line-height: 1.7;
+  --text-brand: 1.25rem;
+  --text-brand--line-height: normal;
+  --text-brand--letter-spacing: -0.01em;
+  --text-input: 1rem;
+  --text-input--line-height: normal;
+  --text-control: 0.95rem;
+  --text-control--line-height: normal;
+  --text-note: 0.95rem;
+  --text-note--line-height: 1.6;
+  --text-caption: 0.875rem;
+  --text-caption--line-height: normal;
+
+  --ease-standard: ease;
+}
+
+@theme inline {
+  --font-sans: var(--font-plex-sans-kr), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --color-line: color-mix(in srgb, var(--color-ink) 18%, transparent);
+  --color-field: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  --color-scrim: color-mix(in srgb, var(--color-surface) 75%, transparent);
+  --text-shadow-halo: 0 0 28px var(--color-surface), 0 0 10px var(--color-surface), 0 0 2px var(--color-surface);
+}
+
+/* 꽃(WebGL) 팔레트: JS가 readColorToken으로 읽음. Tailwind 출력 대상이 아니므로 @theme 밖에 둠 */
+:root {
+  --flower-stamen: rgb(72% 82% 45%);
+  --flower-pollen: rgb(93% 66% 24%);
+  --flower-petal: rgb(90% 33% 50%);
+  --flower-petal-edge: rgb(100% 92% 94%);
+  --flower-spot: rgb(62% 12% 28%);
+  --flower-unlit: rgb(95% 94% 92%);
+  --flower-wilt: rgb(56% 47% 37%);
+  --flower-dust: rgb(100% 100% 100%);
+
+  color-scheme: dark;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @layer base {
-  html,
+  html { background: var(--color-surface); scroll-padding-top: env(safe-area-inset-top, 0px); }
   body {
     background: var(--color-surface);
-    min-height: 100%;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: normal;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
+  button:not(:disabled) { cursor: pointer; }
 }

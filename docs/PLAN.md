@@ -408,6 +408,8 @@ class FlowerScene {
   2. `chore: Vitest·Testing Library 설정`
 
 ### T2. 디자인 토큰·폰트·기본 스타일
+
+- **진행**: 구현 및 build·lint·typecheck·test 통과. 폰트 실 렌더링과 토큰 유틸리티는 T3 화면 비교에서 추가 확인.
 - **작업**
   - `globals.css`를 아래 초안으로 작성합니다. 값은 DESIGN.md 표와 같습니다.
   - `layout.tsx`
