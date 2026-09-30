@@ -67,6 +67,7 @@ Server Component인 `app/page.tsx`에서 일반 함수 콜백을 직접 넘기�
 
 - [구현 계획](docs/PLAN.md)
 - [꽃 확대·대시보드 연결](docs/DASHBOARD.md)
+- [로그인·회원가입·사용자별 관리 태스크](docs/AUTH.md)
 - [디자인 규칙](docs/DESIGN.md)
 - [검증 결과와 남은 확인](docs/QA.md)
 - [기준 화면](docs/reference/landing.html)
