@@ -16,13 +16,16 @@ import { SiteNav } from "@/components/layout/SiteNav";
 import { Reveal } from "@/components/layout/Reveal";
 import { DeployForm } from "@/components/deploy/DeployForm";
 import { Button } from "@/components/ui/Button";
+import type { ReactNode } from "react";
 
 export function LandingPage({
   onComplete,
   onEnterDashboard,
+  navigation,
 }: {
   onComplete?: (result: DeployResult) => void;
   onEnterDashboard?: DashboardHandler;
+  navigation?: ReactNode;
 }) {
   const [repo, setRepo] = useState("");
   const [fail, setFail] = useState(false);
@@ -128,7 +131,7 @@ export function LandingPage({
         data-entry-phase={entry.phase}
         inert={entry.busy}
       >
-        <SiteNav ref={nav} />
+        <SiteNav ref={nav}>{navigation}</SiteNav>
         <main className="relative z-1">
           <Reveal
             ref={section}

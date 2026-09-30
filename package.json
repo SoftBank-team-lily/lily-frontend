@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "setup": "node scripts/setup.mjs",
-    "db:start": "docker compose up -d"
+    "db:start": "docker compose up -d",
+    "db:migrate": "node --conditions=react-server --env-file=.env.local --import tsx scripts/migrate.ts"
   },
   "dependencies": {
     "better-auth": "1.7.6",

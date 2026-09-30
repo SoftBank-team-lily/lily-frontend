@@ -40,7 +40,9 @@ export function AuthForm({
         ? await authClient.signUp.email({
             email,
             password,
-            name: String(data.get("name") ?? "").trim() || email.split("@")[0],
+            name:
+              String(data.get("name") ?? "").trim() ||
+              email.split("@")[0].slice(0, 50),
             callbackURL: `/login?verified=1&next=${encodeURIComponent(next)}`,
           })
         : await authClient.signIn.email({ email, password });
