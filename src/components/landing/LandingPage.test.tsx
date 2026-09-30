@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
 
-vi.mock("@/components/flower/FlowerCanvas", () => ({ FlowerCanvas: () => null }));
+const flower = vi.hoisted(() => vi.fn<(props: { targets: { progress: number; wilt: number } }) => null>(() => null));
+vi.mock("@/components/flower/FlowerCanvas", () => ({ FlowerCanvas: flower }));
 
 describe("배포 화면", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -29,7 +30,9 @@ describe("배포 화면", () => {
     expect(screen.getByText("배포 완료")).toBeInTheDocument();
     expect(screen.getByRole("link")).toHaveTextContent("next-js.lily.app");
     expect(complete).toHaveBeenCalledTimes(1);
+    expect(flower.mock.lastCall?.[0]).toMatchObject({ targets: { progress: 1, wilt: 0 } });
     fireEvent.click(screen.getByRole("button", { name: "다시 배포하기" }));
+    expect(flower.mock.lastCall?.[0]).toMatchObject({ targets: { progress: 0, wilt: 0 } });
     expect(input()).toBeEnabled(); expect(input()).toHaveFocus(); expect(input()).toHaveValue("o/next.js");
     expect(screen.queryByText("배포 완료")).not.toBeInTheDocument();
   });
@@ -37,6 +40,7 @@ describe("배포 화면", () => {
     render(<LandingPage />); fireEvent.click(screen.getByRole("checkbox")); submit();
     fireEvent.click(screen.getByRole("checkbox"));
     await act(() => vi.runAllTimersAsync());
+    expect(flower.mock.lastCall?.[0]).toMatchObject({ targets: { progress: (4 + 7 / 12) / 6, wilt: 0.85 } });
     expect(screen.getByText("이전 버전으로 되돌렸어요")).toBeInTheDocument();
     expect(screen.getByText(/서비스는 계속 정상이에요/)).toBeInTheDocument();
     expect(input()).toBeDisabled();

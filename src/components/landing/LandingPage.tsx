@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
+import { selectFlowerTargets } from "@/lib/deploy/deployReducer";
 import { useDeploy } from "@/lib/deploy/useDeploy";
 import { STAGES, REPO_ERROR, ROLLBACK_MESSAGE } from "@/lib/deploy/stages";
 import type { DeployResult } from "@/lib/deploy/types";
@@ -44,7 +45,7 @@ export function LandingPage({ onComplete }: { onComplete?: (result: DeployResult
     : state.phase === "threshold-exceeded" ? "에러율 기준 초과"
     : STAGES[state.index].name;
   return <>
-    <FlowerCanvas getSlot={getSlot} reducedMotion={reducedMotion} />
+    <FlowerCanvas getSlot={getSlot} reducedMotion={reducedMotion} targets={selectFlowerTargets(state)} />
     <SiteNav ref={nav} />
     <main className="relative z-1">
       <Reveal ref={section} id="deploy" className="mx-auto flex min-h-screen max-w-page flex-col items-center px-6 pt-[52vh] pb-[6vh] text-center">

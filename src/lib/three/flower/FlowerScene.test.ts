@@ -78,4 +78,19 @@ describe("꽃 씬 수명주기", () => {
     expect(material.uniforms.uAssemble.value).toBe(1); expect(material.uniforms.uTime.value).toBe(0);
     expect(bloom.rotation.x).toBe(0); expect(bloom.rotation.y).toBe(0); scene.dispose();
   });
+  it("진행·시듦·재시작 목표가 꽃과 먼지에 올바르게 전달된다", () => {
+    const { scene, image } = mount(true); image.onload!();
+    scene.setTargets({ progress: 0.75, wilt: 1 }); tick(performance.now());
+    const rendered = renderers[0].render.mock.calls[0][0];
+    const bloom = rendered.children[0].children[0].material.uniforms;
+    const dust = rendered.children[1].material.uniforms;
+    expect(bloom.uProgress.value).toBe(0.75); expect(bloom.uWilt.value).toBe(1);
+    expect(dust.uGather.value).toBe(0.75); expect(dust.uProgress.value).toBe(0); expect(dust.uWilt.value).toBe(0);
+    scene.setTargets({ progress: 0.75, wilt: 0.85 }); tick(performance.now());
+    expect(bloom.uWilt.value).toBe(0.85);
+    scene.setTargets({ progress: 0, wilt: 0 }); tick(performance.now());
+    expect(bloom.uProgress.value).toBe(0); expect(bloom.uWilt.value).toBe(0); expect(dust.uGather.value).toBe(0);
+    scene.dispose();
+  });
+
 });
