@@ -59,7 +59,7 @@
 **three.js에서 읽는 규칙**
 
 - **`new THREE.Color(token)` 금지**: three 0.186은 ColorManagement가 기본으로 켜져 있어서 sRGB 문자열을 선형 공간으로 바꿉니다. 그러면 원본(r128, 변환 없음)보다 어둡고 탁해집니다.
-- **`readColorToken()` 사용**: `src/lib/design/readColorToken.ts`가 `getComputedStyle(document.documentElement).getPropertyValue(name)`의 원문을 파싱해 변환 없는 `[r, g, b]`(0~1)를 돌려줍니다. 지원 표기는 `#rrggbb`와 `rgb(r% g% b%)`입니다.
+- **`readColorToken()` 사용**: `src/lib/design/readColorToken.ts`가 `getComputedStyle(document.documentElement).getPropertyValue(name)`의 원문을 파싱해 변환 없는 `[r, g, b]`(0~1)를 돌려줍니다. 지원 표기는 `#rgb`·`#rrggbb`와 `rgb(r% g% b%)`입니다.
 - **빌드 최적화 대응**: `--flower-*-channels`에 퍼센트 세 채널을 저장하고 팔레트 토큰은 `rgb(var(--flower-*-channels))`로 조립합니다. CSS 최적화가 상수 색을 hex로 반올림하는 것을 막습니다. 토큰 리더는 최적화된 UI 토큰의 짧은 hex도 지원합니다.
 - **퍼센트 보존**: `@property`로 등록하지 않은 커스텀 프로퍼티는 계산값이 원문 그대로라서 퍼센트가 보존됩니다.
 - **셰이더 색도 uniform으로**: 원본 셰이더에 박혀 있던 gray·dry도 uniform(`uUnlitColor`, `uWiltColor`)으로 바꿔 토큰에서 넣습니다.
@@ -120,6 +120,7 @@
 - **포커스 링**: `button:focus-visible`과 체크박스 라벨의 `:focus-within`에 2px `accent`, offset 3px를 줍니다.
 - **입력 포커스**: 테두리가 `ink`로 바뀝니다.
 - **버튼 커서**: Tailwind v4 preflight는 버튼 커서를 `default`로 둡니다. base에서 `button:not(:disabled) { cursor: pointer }`로 되돌립니다.
+- **체크박스 동등성**: 원본의 브라우저 기본 여백(`4px 3px 3px 4px`)과 `color-scheme: light`를 명시해 Tailwind preflight와 페이지의 dark 색상 스킴 차이를 보정합니다.
 - **비활성 버튼**: `opacity .4`, 커서 `default`.
 - **플레이스홀더**: v4 preflight의 기본값은 글자색 50%입니다. 원본과 맞추려면 `placeholder:text-mute`를 지정합니다.
 - **스크린리더**: 오류 영역은 `role="alert"`, 상태 영역은 `aria-live="polite"`, 입력 라벨은 `sr-only`입니다.

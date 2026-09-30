@@ -3,12 +3,12 @@
 @theme {
   --color-*: initial;
   --color-surface: #000000;
-  --color-ink: #F2F0EC;
-  --color-mute: #8C8B88;
-  --color-accent: #E0567E;
-  --color-danger: #D6453D;
-  --color-rollback: #8C7560;
-  --color-warning: #E9A53A;
+  --color-ink: #f2f0ec;
+  --color-mute: #8c8b88;
+  --color-accent: #e0567e;
+  --color-danger: #d6453d;
+  --color-rollback: #8c7560;
+  --color-warning: #e9a53a;
 
   --container-page: 1080px;
 
@@ -33,11 +33,15 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-plex-sans-kr), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-sans:
+    var(--font-plex-sans-kr), "Apple SD Gothic Neo", "Malgun Gothic", system-ui,
+    sans-serif;
   --color-line: color-mix(in srgb, var(--color-ink) 18%, transparent);
   --color-field: color-mix(in srgb, var(--color-ink) 6%, transparent);
   --color-scrim: color-mix(in srgb, var(--color-surface) 75%, transparent);
-  --text-shadow-halo: 0 0 28px var(--color-surface), 0 0 10px var(--color-surface), 0 0 2px var(--color-surface);
+  --text-shadow-halo:
+    0 0 28px var(--color-surface), 0 0 10px var(--color-surface),
+    0 0 2px var(--color-surface);
 }
 
 /* 꽃(WebGL) 팔레트: JS가 readColorToken으로 읽음. Tailwind 출력 대상이 아니므로 @theme 밖에 둠 */
@@ -65,7 +69,10 @@
 }
 
 @layer base {
-  html { background: var(--color-surface); scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html {
+    background: var(--color-surface);
+    scroll-padding-top: env(safe-area-inset-top, 0px);
+  }
   body {
     background: var(--color-surface);
     color: var(--color-ink);
@@ -74,18 +81,29 @@
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
-  button:not(:disabled) { cursor: pointer; }
+  button:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer components {
   .reveal > * {
     opacity: 0;
     translate: 0 12px;
-    transition: opacity 1s var(--ease-standard), translate 1s var(--ease-standard);
+    transition:
+      opacity 1s var(--ease-standard),
+      translate 1s var(--ease-standard);
   }
-  .reveal > [role="alert"] { translate: none; }
-  .reveal[data-visible="true"] > * { opacity: 1; translate: none; }
+  .reveal > [role="alert"] {
+    translate: none;
+  }
+  .reveal[data-visible="true"] > * {
+    opacity: 1;
+    translate: none;
+  }
   @media (prefers-reduced-motion: reduce) {
-    .reveal > * { transition: none; }
+    .reveal > * {
+      transition: none;
+    }
   }
 }

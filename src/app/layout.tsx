@@ -11,7 +11,9 @@ const plex = IBM_Plex_Sans_KR({
 });
 
 export const viewport: Viewport = {
-  width: "device-width", initialScale: 1, viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {

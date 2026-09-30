@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint && node scripts/check-design-tokens.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/*.test.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
@@ -19,6 +19,7 @@
     "three": "~0.186.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.2",
@@ -36,6 +37,7 @@
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "tailwindcss": "^4",
+    "three-reference": "npm:three@0.128.0",
     "typescript": "^5",
     "vitest": "^5.0.2"
   },

@@ -10,5 +10,9 @@ const subscribe = (notify: () => void) => {
 };
 
 export function usePrefersReducedMotion() {
-  return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => false);
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
 }

@@ -23,6 +23,9 @@ Artifact로 만든 랜딩 화면을 **Next.js + Tailwind CSS + three.js**로 똑
 | T8 | 꽃↔배포 연결 | 진행에 따라 색이 번지고, 롤백 시 시듦 | T5, T7 |
 | T9 | 동등성 QA·마감 | §7 검증 전부 통과, README 정리 | T8 |
 
+- **이번 실행 방식**: 사용자 요청에 따라 `develop`에서 T2→T9 순서로 진행하고, 태스크 검증 후 다음 태스크로 이동하기 전에 각각 로컬 커밋했습니다. PR 생성·push는 별도입니다.
+- **검증 결과**: [QA.md](./QA.md). T2~T8 구현·검증 완료. T9 코드·자동 QA·문서 완료, 실제 iPhone 확인은 미검증입니다.
+
 - **병렬 진행**: T3 ∥ T4, T6·T7 ∥ T3~T5
 - **커밋 단위**: 태스크당 PR 하나(`develop` 대상)이고, PR 안의 커밋은 각 태스크의 "커밋" 항목을 따릅니다.
 - **커밋 메시지**: Conventional Commits 형식, 설명은 한국어로 씁니다.
@@ -409,7 +412,7 @@ class FlowerScene {
 
 ### T2. 디자인 토큰·폰트·기본 스타일
 
-- **진행**: 구현 및 build·lint·typecheck·test 통과. 폰트 실 렌더링과 토큰 유틸리티는 T3 화면 비교에서 추가 확인.
+- **상태**: 완료. build·lint·typecheck·test 통과. T3의 픽셀 비교·실 렌더링 폰트 검사와 T7의 최적화된 CSS 토큰 읽기까지 검증했습니다.
 - **작업**
   - `globals.css`를 아래 초안으로 작성합니다. 값은 DESIGN.md 표와 같습니다.
   - `layout.tsx`
@@ -586,7 +589,7 @@ class FlowerScene {
 
 ### T7. 꽃 씬 런타임·캔버스
 
-- **진행**: 구현 완료. build·lint·typecheck 및 29개 테스트, 실제 WebGL 브라우저 검사 3개 통과. StrictMode마다 새 canvas를 생성해 해제된 컨텍스트 재사용을 방지. 전체 꽃 연출의 기준 비교는 T9에서 진행.
+- **상태**: 완료. build·lint·typecheck 및 실제 WebGL 검사 통과. StrictMode마다 새 canvas를 생성해 해제된 컨텍스트 재사용을 방지. T9에서 원본 연출 비교도 확인했습니다.
 - **작업**
   - `FlowerScene`: renderer·camera, 마스크 로드, 인트로, 루프, 포인터, resize, `setTargets`, `dispose`. 먼지 uniform은 얕은 복사로 공유합니다(§4.4).
   - `FlowerCanvas`(dynamic, ssr:false)
@@ -603,7 +606,7 @@ class FlowerScene {
 
 ### T8. 꽃↔배포 연결
 
-- **진행**: 구현 완료. build·lint·typecheck 및 30개 테스트 통과. 브라우저에서 성공·재시작·롤백 시 같은 canvas 유지, 색 변화와 초기 이미지 복구 검증. 원본 연출 비교는 T9에서 진행.
+- **상태**: 완료. build·lint·typecheck 및 브라우저 검사 통과. 성공·재시작·롤백 시 같은 canvas 유지, 색 변화와 초기 이미지 복구 검증. T9에서 원본 연출 비교도 확인했습니다.
 - **작업**: `selectFlowerTargets`의 결과를 `FlowerCanvas`로 넘깁니다. 성공, 롤백(1 → 0.85), 다시 배포하기(0) 흐름을 확인합니다.
 - **완료 기준**
   - 기준과 나란히 띄웠을 때 색이 중심부터 번지는 속도와 모양이 같습니다.
@@ -613,6 +616,8 @@ class FlowerScene {
 - **커밋**: `feat: 배포 진행에 따라 꽃 색 번짐·시듦 연결`
 
 ### T9. 동등성 QA·마감
+
+- **상태**: 코드·자동 QA·문서 완료. 34개 Vitest, 2개 검사 스크립트 테스트, Chromium 17개·WebKit 2개 브라우저 검사 통과. Lighthouse 접근성 100. **실제 iPhone 검증은 미완료**이며 [QA.md](./QA.md)에 남은 항목을 기록했습니다.
 - **작업**
   - §7 전체 검증
   - 모바일 실기기(iOS Safari safe-area, 가로 모드)

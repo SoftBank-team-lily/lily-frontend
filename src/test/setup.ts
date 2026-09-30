@@ -7,7 +7,13 @@ afterEach(cleanup);
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return true;
+    },
   }),
 });
