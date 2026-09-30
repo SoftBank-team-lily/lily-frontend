@@ -585,6 +585,8 @@ class FlowerScene {
   4. `feat: 카메라 맞춤·감쇠 유틸`
 
 ### T7. 꽃 씬 런타임·캔버스
+
+- **진행**: 구현 완료. build·lint·typecheck 및 29개 테스트, 실제 WebGL 브라우저 검사 3개 통과. StrictMode마다 새 canvas를 생성해 해제된 컨텍스트 재사용을 방지. 전체 꽃 연출의 기준 비교는 T9에서 진행.
 - **작업**
   - `FlowerScene`: renderer·camera, 마스크 로드, 인트로, 루프, 포인터, resize, `setTargets`, `dispose`. 먼지 uniform은 얕은 복사로 공유합니다(§4.4).
   - `FlowerCanvas`(dynamic, ssr:false)

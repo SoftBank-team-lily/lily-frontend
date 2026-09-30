@@ -42,14 +42,22 @@
 
 /* 꽃(WebGL) 팔레트: JS가 readColorToken으로 읽음. Tailwind 출력 대상이 아니므로 @theme 밖에 둠 */
 :root {
-  --flower-stamen: rgb(72% 82% 45%);
-  --flower-pollen: rgb(93% 66% 24%);
-  --flower-petal: rgb(90% 33% 50%);
-  --flower-petal-edge: rgb(100% 92% 94%);
-  --flower-spot: rgb(62% 12% 28%);
-  --flower-unlit: rgb(95% 94% 92%);
-  --flower-wilt: rgb(56% 47% 37%);
-  --flower-dust: rgb(100% 100% 100%);
+  --flower-stamen-channels: 72% 82% 45%;
+  --flower-stamen: rgb(var(--flower-stamen-channels));
+  --flower-pollen-channels: 93% 66% 24%;
+  --flower-pollen: rgb(var(--flower-pollen-channels));
+  --flower-petal-channels: 90% 33% 50%;
+  --flower-petal: rgb(var(--flower-petal-channels));
+  --flower-petal-edge-channels: 100% 92% 94%;
+  --flower-petal-edge: rgb(var(--flower-petal-edge-channels));
+  --flower-spot-channels: 62% 12% 28%;
+  --flower-spot: rgb(var(--flower-spot-channels));
+  --flower-unlit-channels: 95% 94% 92%;
+  --flower-unlit: rgb(var(--flower-unlit-channels));
+  --flower-wilt-channels: 56% 47% 37%;
+  --flower-wilt: rgb(var(--flower-wilt-channels));
+  --flower-dust-channels: 100% 100% 100%;
+  --flower-dust: rgb(var(--flower-dust-channels));
 
   color-scheme: dark;
   padding-top: env(safe-area-inset-top, 0px);

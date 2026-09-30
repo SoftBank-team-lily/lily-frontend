@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
 
+vi.mock("@/components/flower/FlowerCanvas", () => ({ FlowerCanvas: () => null }));
+
 describe("배포 화면", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 const rules = [
   /#[\da-f]{3,8}\b/i,
-  /\b(?:rgba?|hsla?|oklch|color-mix|color)\s*\(/i,
+  /\b(?:rgba?|hsla?|oklch|color-mix)\s*\(/i,
   /vec3\(\s*\d*\.?\d+\s*,\s*\d*\.?\d+\s*,\s*\d*\.?\d+\s*\)/,
   /\b(?:bg|text|border|outline|accent)-(?:white|black|(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d+)\b/,
   /\b(?:bg|text|border|outline|accent)-[\w-]+\/\d+/,

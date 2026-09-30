@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { useDeploy } from "@/lib/deploy/useDeploy";
 import { STAGES, REPO_ERROR, ROLLBACK_MESSAGE } from "@/lib/deploy/stages";
@@ -8,6 +8,7 @@ import type { DeployResult } from "@/lib/deploy/types";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { DeployStatus } from "@/components/deploy/DeployStatus";
+import { FlowerCanvas } from "@/components/flower/FlowerCanvas";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { Reveal } from "@/components/layout/Reveal";
 import { DeployForm } from "@/components/deploy/DeployForm";
@@ -16,9 +17,15 @@ export function LandingPage({ onComplete }: { onComplete?: (result: DeployResult
   const [repo, setRepo] = useState("");
   const [fail, setFail] = useState(false);
   const [error, setError] = useState("");
+  const nav = useRef<HTMLElement>(null);
+  const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const reducedMotion = usePrefersReducedMotion();
   const { state, start, reset } = useDeploy({ reducedMotion, onComplete });
+  const getSlot = useCallback(() => ({
+    top: window.innerWidth >= 700 ? 12 : (nav.current?.getBoundingClientRect().bottom ?? 64) - 8,
+    bottom: section.current ? section.current.getBoundingClientRect().top + window.scrollY + parseFloat(getComputedStyle(section.current).paddingTop) - 16 : window.innerHeight * 0.52 - 16,
+  }), []);
   const disabled = state.phase !== "idle";
   const finished = state.phase === "succeeded" || state.phase === "rolled-back";
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -37,9 +44,10 @@ export function LandingPage({ onComplete }: { onComplete?: (result: DeployResult
     : state.phase === "threshold-exceeded" ? "에러율 기준 초과"
     : STAGES[state.index].name;
   return <>
-    <SiteNav />
+    <FlowerCanvas getSlot={getSlot} reducedMotion={reducedMotion} />
+    <SiteNav ref={nav} />
     <main className="relative z-1">
-      <Reveal id="deploy" className="mx-auto flex min-h-screen max-w-page flex-col items-center px-6 pt-[52vh] pb-[6vh] text-center">
+      <Reveal ref={section} id="deploy" className="mx-auto flex min-h-screen max-w-page flex-col items-center px-6 pt-[52vh] pb-[6vh] text-center">
         <div className="max-w-lg break-keep text-shadow-halo"><h2 className="mb-[0.8rem] text-display font-semibold">지금 피워 보세요.</h2><p className="text-lead text-mute">배포가 진행될수록 꽃에 색이 번져요. 이 화면은 시연용이라 실제 배포는 일어나지 않아요.</p></div>
         <DeployForm repo={repo} fail={fail} error={error} disabled={disabled} inputRef={input} onRepoChange={setRepo} onFailChange={setFail} onSubmit={submit} />
         {disabled && <DeployStatus stage={stage} step={state.index + 1} fractions={state.fractions} failedIndex={state.failedIndex} finished={finished} onReset={restart}>

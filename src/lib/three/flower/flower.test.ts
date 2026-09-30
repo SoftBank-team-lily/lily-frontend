@@ -9,7 +9,8 @@ import { buildFlowerAttributes, buildDustAttributes, type FlowerPalette } from "
 import { createDustUniforms, createParticleGeometry, createParticleMaterial, createUniforms } from "./material";
 
 const css = readFileSync("src/app/globals.css", "utf8");
-const token = (name: string) => parseColorToken(css.match(new RegExp(`--${name}: ([^;]+);`))![1]);
+const rawToken = (name: string): string => css.match(new RegExp(`--${name}: ([^;]+);`))![1].replace(/var\(--([\w-]+)\)/g, (_, name) => rawToken(name));
+const token = (name: string) => parseColorToken(rawToken(name));
 const palette: FlowerPalette = {
   stamen: token("flower-stamen"), pollen: token("flower-pollen"), petal: token("flower-petal"),
   edge: token("flower-petal-edge"), spot: token("flower-spot"), unlit: token("flower-unlit"),
@@ -24,7 +25,7 @@ describe("꽃 기반 모듈", () => {
   it("CSS 색상의 채널을 변환 없이 보존한다", () => {
     expect(token("color-ink")[0]).toBe(242 / 255);
     expect(palette.pollen[0]).toBe(93 / 100);
-    document.documentElement.style.setProperty("--test-color", css.match(/--flower-pollen: ([^;]+);/)![1]);
+    document.documentElement.style.setProperty("--test-color", rawToken("flower-pollen"));
     expect(readColorToken("--test-color")).toEqual(palette.pollen);
     expect(() => parseColorToken("invalid")).toThrow();
   });

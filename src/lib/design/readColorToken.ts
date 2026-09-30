@@ -2,6 +2,8 @@ export type RGB = [number, number, number];
 
 export function parseColorToken(value: string): RGB {
   const text = value.trim();
+  const short = text.match(/^#([\da-f])([\da-f])([\da-f])$/i);
+  if (short) return short.slice(1).map(channel => parseInt(channel + channel, 16) / 255) as RGB;
   const hex = text.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
   if (hex) return hex.slice(1).map(channel => parseInt(channel, 16) / 255) as RGB;
   const rgb = text.match(/^rgb\(\s*(\d*\.?\d+)%\s+(\d*\.?\d+)%\s+(\d*\.?\d+)%\s*\)$/);
