@@ -7,6 +7,7 @@ import type { Project, DeploymentStatus } from "@/lib/projects/types";
 import { AuthField } from "@/components/auth/AuthField";
 import { Button } from "@/components/ui/Button";
 
+const targetLabels = { cloud: "클라우드", onprem: "내 PC" } as const;
 const statusLabels: Record<DeploymentStatus, string> = {
   queued: "배포 대기",
   running: "배포 중",
@@ -65,6 +66,7 @@ export function ProjectItem({
       <h3 className="break-words text-lead font-semibold">{project.name}</h3>
       <p className="mt-1 break-all text-caption text-mute">{project.repo}</p>
       <p className="mt-3 text-caption text-mute">
+        {targetLabels[project.target]} ·{" "}
         {project.latestDeployment
           ? statusLabels[project.latestDeployment.status]
           : "배포 기록 없음"}
@@ -105,6 +107,17 @@ export function ProjectItem({
           >
             이름 수정
           </button>
+          {project.latestDeployment?.status === "succeeded" &&
+            project.latestDeployment.url && (
+              <a
+                href={project.latestDeployment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ink underline"
+              >
+                앱 열기
+              </a>
+            )}
           {project.latestDeployment?.status === "succeeded" && (
             <Link
               href={`/?project=${project.id}`}

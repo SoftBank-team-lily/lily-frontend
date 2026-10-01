@@ -2,18 +2,57 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { projectRequest, ProjectError } from "@/lib/projects/client";
-import type { Project, ProjectPage } from "@/lib/projects/types";
+import type {
+  DeployTarget,
+  Project,
+  ProjectPage,
+} from "@/lib/projects/types";
+import type { AgentState } from "@/lib/agents/types";
 import { AuthField } from "@/components/auth/AuthField";
 import { Button } from "@/components/ui/Button";
 import { ProjectItem } from "./ProjectItem";
+import { TargetChoice } from "./TargetChoice";
+import { AgentPanel } from "./AgentPanel";
+
+/** 배포가 진행 중이면(첫 배포가 만들어지기 전 포함) 목록을 다시 읽는 주기 */
+const REFRESH_MS = 4000;
+function inProgress(project: Project) {
+  return (
+    !project.latestDeployment ||
+    project.latestDeployment.status === "queued" ||
+    project.latestDeployment.status === "running"
+  );
+}
 
 export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   const [page, setPage] = useState(initialPage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [target, setTarget] = useState<DeployTarget>("cloud");
+  const [agent, setAgent] = useState<AgentState>(null);
   const lock = useRef(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
+  const watching = page.items.some(inProgress);
+  useEffect(() => {
+    if (!watching) return;
+    // 실행기가 배포를 진행하는 동안 상태만 조용히 바꾼다 (폼은 잠그지 않는다)
+    const timer = setInterval(async () => {
+      try {
+        const latest = await projectRequest<ProjectPage>("/api/projects");
+        setPage((previous) => ({
+          ...previous,
+          items: previous.items.map(
+            (item) => latest.items.find((value) => value.id === item.id) ?? item,
+          ),
+        }));
+      } catch {
+        // 다음 주기에 다시 읽는다
+      }
+    }, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [watching]);
+  const waitingAgent = target === "onprem" && !agent?.connected;
   async function request(operation: (signal: AbortSignal) => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -46,6 +85,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         signal,
         body: JSON.stringify({
           repo: String(data.get("repo")),
+          target,
           ...(String(data.get("name") ?? "").trim()
             ? { name: String(data.get("name")).trim() }
             : {}),
@@ -100,8 +140,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         </button>
       </div>
       <p className="mt-2 text-caption text-mute">
-        레포를 계정에 등록하세요. 실제 배포가 완료되면 꽃으로 대시보드를 열 수
-        있어요.
+        레포를 등록하면 바로 배포를 시작해요. 배포가 완료되면 꽃으로
+        대시보드를 열 수 있어요.
       </p>
       <form onSubmit={create} className="mt-5 space-y-4" aria-busy={busy}>
         <fieldset disabled={busy} className="flex flex-col gap-4">
@@ -119,9 +159,16 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
             label="프로젝트 이름 (선택)"
             maxLength={100}
           />
-          <Button type="submit" variant="ghost">
+          <TargetChoice value={target} onChange={setTarget} />
+          {target === "onprem" && <AgentPanel onChange={setAgent} />}
+          <Button type="submit" variant="ghost" disabled={waitingAgent}>
             {busy ? "처리 중…" : "프로젝트 등록"}
           </Button>
+          {waitingAgent && (
+            <p className="text-caption text-mute">
+              내 PC가 연결되면 등록할 수 있어요.
+            </p>
+          )}
         </fieldset>
       </form>
       <p role="alert" className="mt-3 text-caption text-danger">
