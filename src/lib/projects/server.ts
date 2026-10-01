@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api";
+import { createWebhookSecret, type WebhookProject } from "@/lib/github/webhook";
 import type {
   Project,
   ProjectPage,
@@ -23,6 +24,7 @@ type Row = {
   port: number | null;
   health_path: string | null;
   env_keys: string[];
+  webhook_secret: string | null;
   created_at: Date;
   deployment_id: string | null;
   status: DeploymentStatus | null;
@@ -33,7 +35,8 @@ type Row = {
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
 const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.root_dir, p.branch, p.port, p.health_path,
-  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs
+  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys, p.webhook_secret, p.created_at,
+  d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
   ) d ON true
@@ -49,6 +52,8 @@ function project(row: Row): Project {
     port: row.port,
     healthPath: row.health_path,
     envKeys: row.env_keys,
+    webhookSecret: row.webhook_secret ?? "",
+    webhookUrl: webhookUrl(),
     createdAt: row.created_at.toISOString(),
     latestDeployment:
       row.deployment_id && row.status
@@ -74,7 +79,9 @@ export async function listProjects(
     ORDER BY p.created_at DESC, p.id DESC LIMIT $3`,
     [ownerId, cursor, limit + 1],
   );
-  const items = result.rows.slice(0, limit).map(project);
+  const rows = result.rows.slice(0, limit);
+  await ensureWebhookSecrets(rows);
+  const items = rows.map(project);
   return {
     items,
     nextCursor: result.rows.length > limit ? items.at(-1)!.id : null,
@@ -90,6 +97,7 @@ export async function getProject(
   );
   if (!result.rows[0])
     throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
+  await ensureWebhookSecrets(result.rows);
   return project(result.rows[0]);
 }
 export async function createProject(
@@ -115,8 +123,8 @@ export async function createProject(
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
-    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env, webhook_secret)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       id,
       ownerId,
@@ -129,6 +137,7 @@ export async function createProject(
       settings.port ?? null,
       settings.healthPath || null,
       JSON.stringify(settings.env ?? {}),
+      createWebhookSecret(),
     ],
   );
   return getProject(ownerId, id);
@@ -188,6 +197,23 @@ export async function listDeployments(ownerId: string, projectId: string) {
     [projectId],
   );
   return result.rows.map(deployment);
+}
+/** push 웹훅이 저장소 이름으로 프로젝트를 찾는다. 시크릿이 없는 예전 행은 서명에 맞지 않는다 */
+export async function projectsForWebhook(repo: string): Promise<WebhookProject[]> {
+  const result = await db.query<{
+    id: string;
+    owner_id: string;
+    branch: string | null;
+    webhook_secret: string | null;
+  }>("SELECT id, owner_id, branch, webhook_secret FROM projects WHERE repo=$1", [
+    repo,
+  ]);
+  return result.rows.map((row) => ({
+    id: row.id,
+    ownerId: row.owner_id,
+    branch: row.branch,
+    secret: row.webhook_secret,
+  }));
 }
 export async function createDeployment(
   ownerId: string,
@@ -295,6 +321,8 @@ export async function getProjectEntry(
   return {
     project: {
       ...result,
+      webhookSecret: "",
+      webhookUrl: "",
       latestDeployment: {
         id: result.latestDeployment.id,
         status: "succeeded",
@@ -306,4 +334,38 @@ export async function getProjectEntry(
     },
     destination,
   };
+}
+
+function webhookUrl() {
+  const configured = process.env.BETTER_AUTH_URL?.trim();
+  if (!configured) return "";
+  try {
+    return `${new URL(configured).origin}/api/github/webhook`;
+  } catch {
+    return "";
+  }
+}
+
+/** 마이그레이션 전에 만든 프로젝트는 처음 조회할 때 시크릿을 채운다 */
+async function ensureWebhookSecrets(rows: Row[]) {
+  for (const row of rows) {
+    if (row.webhook_secret) continue;
+    const secret = createWebhookSecret();
+    const updated = await db.query<{ webhook_secret: string }>(
+      "UPDATE projects SET webhook_secret=$2 WHERE id=$1 AND webhook_secret IS NULL RETURNING webhook_secret",
+      [row.id, secret],
+    );
+    if (updated.rows[0]) {
+      row.webhook_secret = updated.rows[0].webhook_secret;
+      continue;
+    }
+    const current = await db.query<{ webhook_secret: string | null }>(
+      "SELECT webhook_secret FROM projects WHERE id=$1",
+      [row.id],
+    );
+    const value = current.rows[0]?.webhook_secret;
+    if (!value)
+      throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
+    row.webhook_secret = value;
+  }
 }

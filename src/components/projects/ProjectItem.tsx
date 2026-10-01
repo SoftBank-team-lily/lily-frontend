@@ -28,6 +28,7 @@ export function ProjectItem({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const latest = project.latestDeployment;
+  const watchedBranch = project.branch || "main";
   const canRedeploy =
     latest !== null && latest.status !== "queued" && latest.status !== "running";
   async function redeploy() {
@@ -124,6 +125,7 @@ export function ProjectItem({
           </pre>
         </details>
       )}
+      <WebhookSetup project={project} branch={watchedBranch} />
       {editing ? (
         <form onSubmit={save} className="mt-4 space-y-3" aria-busy={busy}>
           <fieldset disabled={busy} className="flex flex-col gap-3">
@@ -262,5 +264,62 @@ export function ProjectItem({
         {error}
       </p>
     </li>
+  );
+}
+
+function WebhookSetup({
+  project,
+  branch,
+}: {
+  project: Project;
+  branch: string;
+}) {
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <p className="text-caption text-mute">
+        GitHub 저장소의 Settings → Webhooks에 아래 값을 넣으면 {branch}에
+        푸시할 때마다 이 프로젝트를 다시 배포해요. Content type은
+        application/json, 이벤트는 push만 고르세요.
+      </p>
+      {project.webhookUrl ? (
+        <CopyLine label="Payload URL" value={project.webhookUrl} />
+      ) : (
+        <p className="mt-2 text-caption text-danger">
+          서버 주소가 없어 웹훅 주소를 만들지 못했어요.
+        </p>
+      )}
+      <CopyLine label="Secret" value={project.webhookSecret} />
+      <p className="mt-2 text-caption text-mute">
+        같은 저장소의 다른 폴더는 웹훅을 하나씩 더 추가해 주세요.
+      </p>
+    </div>
+  );
+}
+
+function CopyLine({ label, value }: { label: string; value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-caption text-mute">{label}</p>
+        <button
+          type="button"
+          className="text-caption text-mute hover:text-ink"
+          aria-label={done ? `${label} 복사됨` : `${label} 복사`}
+          aria-live="polite"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(value);
+              setDone(true);
+            } catch {
+              setDone(false);
+            }
+          }}
+        >
+          {done ? "복사됨" : "복사"}
+        </button>
+      </div>
+      <p className="mt-1 break-all font-mono text-caption text-ink">{value}</p>
+    </div>
   );
 }

@@ -27,6 +27,10 @@ export type Project = {
   healthPath: string | null;
   /** 환경변수 이름만 돌려준다 (값은 비밀일 수 있다) */
   envKeys: string[];
+  /** GitHub 웹훅 Secret. 본인 프로젝트 응답에서만 내려 준다 */
+  webhookSecret: string;
+  /** GitHub에 등록할 Payload URL. 서버 공개 주소가 없으면 빈 문자열 */
+  webhookUrl: string;
   createdAt: string;
   /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {
