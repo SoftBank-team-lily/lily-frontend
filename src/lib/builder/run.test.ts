@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   allowed,
+  type BuildState,
   appName,
   BuilderRejected,
   finalStatus,
@@ -11,10 +12,15 @@ import {
 const PROJECT = "1b62c0de-0000-4000-8000-000000000001";
 
 type Fake = RunDeps & {
-  queue(repo: string): string;
+  queue(
+    repo: string,
+    target?: "cloud" | "onprem",
+    agentKey?: string | null,
+  ): string;
   status: Map<string, string>;
   builds: Map<string, string>;
-  builderStatus: Map<string, string | null>;
+  builderStatus: Map<string, BuildState | null>;
+  urls: Map<string, string>;
   started: string[];
   events: string[];
   reject: boolean;
@@ -23,12 +29,16 @@ type Fake = RunDeps & {
 };
 
 function fake(): Fake {
-  const repos = new Map<string, string>();
+  const repos = new Map<
+    string,
+    { repo: string; target: "cloud" | "onprem"; agentKey: string | null }
+  >();
   let next = 0;
   const deps: Fake = {
     status: new Map(),
     builds: new Map(),
     builderStatus: new Map(),
+    urls: new Map(),
     started: [],
     events: [],
     reject: false,
@@ -36,9 +46,9 @@ function fake(): Fake {
     failEvent: false,
     allowedOwners: [],
     maxActive: 2,
-    queue(repo) {
+    queue(repo, target = "cloud", agentKey = null) {
       const id = `d${++next}`;
-      repos.set(id, repo);
+      repos.set(id, { repo, target, agentKey });
       deps.status.set(id, "queued");
       return id;
     },
@@ -49,7 +59,7 @@ function fake(): Fake {
       return [...repos.keys()]
         .filter((id) => deps.status.get(id) === "queued" && !deps.builds.has(id))
         .slice(0, limit)
-        .map((id) => ({ deploymentId: id, projectId: PROJECT, repo: repos.get(id)! }));
+        .map((id) => ({ deploymentId: id, projectId: PROJECT, ...repos.get(id)! }));
     },
     async active() {
       return [...deps.builds.entries()]
@@ -63,16 +73,19 @@ function fake(): Fake {
     async saveRun(deploymentId, buildId) {
       deps.builds.set(deploymentId, buildId);
     },
-    async startBuild(repoUrl, app) {
+    async saveUrl(deploymentId, url) {
+      deps.urls.set(deploymentId, url);
+    },
+    async startBuild(repoUrl, app, agentKey) {
       if (deps.reject) throw new BuilderRejected("400 bad repo");
       if (deps.down) throw new Error("connection refused");
-      deps.started.push(`${repoUrl} ${app}`);
+      deps.started.push(`${repoUrl} ${app}${agentKey ? ` @${agentKey}` : ""}`);
       return `b${deps.started.length}`;
     },
     async buildStatus(buildId) {
       return deps.builderStatus.has(buildId)
         ? deps.builderStatus.get(buildId)!
-        : "BUILDING";
+        : { status: "BUILDING", url: null };
     },
     async event(deploymentId, status) {
       if (deps.failEvent) {
@@ -105,8 +118,8 @@ describe("배포 실행기 한 주기", () => {
     const ok = deps.queue("a/ok");
     const bad = deps.queue("a/bad");
     await runOnce(deps);
-    deps.builderStatus.set("b1", "SUCCEEDED");
-    deps.builderStatus.set("b2", "ROLLED_BACK");
+    deps.builderStatus.set("b1", { status: "SUCCEEDED", url: null });
+    deps.builderStatus.set("b2", { status: "ROLLED_BACK", url: null });
     await runOnce(deps);
     expect(deps.events).toEqual([
       `${ok} running`,
@@ -121,7 +134,7 @@ describe("배포 실행기 한 주기", () => {
     deps.failEvent = true;
     await runOnce(deps);
     expect(deps.status.get(id)).toBe("queued");
-    deps.builderStatus.set("b1", "SUCCEEDED");
+    deps.builderStatus.set("b1", { status: "SUCCEEDED", url: null });
     await runOnce(deps);
     expect(deps.events).toEqual([`${id} running`, `${id} succeeded`]);
   });
@@ -157,6 +170,35 @@ describe("배포 실행기 한 주기", () => {
     deps.queue("a/three");
     await runOnce(deps);
     expect(deps.started).toHaveLength(2);
+  });
+
+  it("성공하면 접속 주소를 남긴다", async () => {
+    const id = deps.queue("a/b");
+    await runOnce(deps);
+    deps.builderStatus.set("b1", {
+      status: "SUCCEEDED",
+      url: "https://b-1b62c0.apps.lilycloud.kr",
+    });
+    await runOnce(deps);
+    expect(deps.urls.get(id)).toBe("https://b-1b62c0.apps.lilycloud.kr");
+    expect(deps.events).toEqual([`${id} running`, `${id} succeeded`]);
+  });
+
+  it("내 PC 프로젝트는 에이전트로 보내고 앱 이름을 31자 안으로 줄인다", async () => {
+    deps.queue(`a/${"long-repository-name-".repeat(3)}`, "onprem", "a1b2c3d4e5f6");
+    await runOnce(deps);
+    const [url, app, agent] = deps.started[0].split(" ");
+    expect(url).toContain("github.com/a/");
+    expect(app.length).toBeLessThanOrEqual(31);
+    expect(app).toMatch(/^[a-z][a-z0-9-]*-1b62c0$/);
+    expect(agent).toBe("@a1b2c3d4e5f6");
+  });
+
+  it("내 PC 프로젝트인데 연결된 에이전트가 없으면 보내지 않고 failed", async () => {
+    const id = deps.queue("a/b", "onprem", null);
+    await runOnce(deps);
+    expect(deps.started).toEqual([]);
+    expect(deps.events).toEqual([`${id} failed`]);
   });
 
   it("허용되지 않은 소유자의 레포는 보내지 않고 failed", async () => {

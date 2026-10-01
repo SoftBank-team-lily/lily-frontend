@@ -56,9 +56,12 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         id: string;
         project_id: string;
         repo: string;
+        target: "cloud" | "onprem";
+        agent_key: string | null;
       }>(
-        `SELECT d.id, d.project_id, p.repo FROM deployments d
+        `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key FROM deployments d
         JOIN projects p ON p.id=d.project_id
+        LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
         WHERE d.status='queued' AND r.deployment_id IS NULL
         ORDER BY d.created_at LIMIT $1`,
@@ -68,6 +71,8 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         deploymentId: row.id,
         projectId: row.project_id,
         repo: row.repo,
+        target: row.target,
+        agentKey: row.agent_key,
       }));
     },
     async active() {
@@ -92,8 +97,16 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         [deploymentId, buildId, appName],
       );
     },
-    async startBuild(repoUrl, appName) {
-      const response = await fetch(`${builderUrl}/api/builds`, {
+    async saveUrl(deploymentId, url) {
+      await db.query("UPDATE builder_runs SET url=$2 WHERE deployment_id=$1", [
+        deploymentId,
+        url,
+      ]);
+    },
+    async startBuild(repoUrl, appName, agentKey) {
+      // 내 PC 는 builder 가 소켓으로 붙은 에이전트에 잡을 보낸다. 상태는 클라우드와 같은 /api/builds/{id}
+      const path = agentKey ? `/api/agents/${agentKey}/builds` : "/api/builds";
+      const response = await fetch(`${builderUrl}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repoUrl, appName, database }),
@@ -111,7 +124,11 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
       );
       if (response.status === 404) return null;
       if (!response.ok) throw new Error(`builder ${response.status}`);
-      return ((await response.json()) as { status: string }).status;
+      const build = (await response.json()) as {
+        status: string;
+        url: string | null;
+      };
+      return { status: build.status, url: build.url ?? null };
     },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다
