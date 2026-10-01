@@ -3,6 +3,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/agents/server", () => ({ getAgent: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { query: vi.fn() } }));
 vi.mock("@/lib/projects/server", () => ({ getProject: vi.fn() }));
+import { getAgent } from "@/lib/agents/server";
 import { db } from "@/lib/db";
 import { getProject } from "@/lib/projects/server";
 import { getMonitor, readResource, redact } from "./server";
@@ -64,4 +65,25 @@ it("실제 API 필드를 매핑하며 일부 실패와 다른 앱 데이터를 �
   expect(JSON.stringify(result)).not.toContain("private-secret");
   expect(JSON.stringify(result)).not.toContain("hidden");
   expect(fetch.mock.calls.some(([url]) => url.searchParams.get("level") === "error" && url.searchParams.get("since") === "15m")).toBe(true);
+});
+
+
+it("온프레미스 에이전트 연결과 실시간 관측 미지원을 구분한다", async () => {
+  vi.mocked(getProject).mockResolvedValueOnce({ id: "project", name: "sample", target: "onprem", repo: "team/repo", rootDir: "", latestDeployment: null } as Awaited<ReturnType<typeof getProject>>);
+  vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ app_name: "owned-app", env: {}, database_url: null }] } as never);
+  vi.mocked(getAgent).mockResolvedValueOnce({ connected: true, agentId: "my-pc", database: true });
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  const result = await getMonitor("owner", "project", { window: "15m", level: "all" });
+  expect(result.agent).toMatchObject({ state: "ready", data: { connected: true } });
+  expect(result.metrics.state).toBe("unsupported");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("배포 기록이 없으면 레포 이름으로 앱을 추측하지 않는다", async () => {
+  vi.mocked(getProject).mockResolvedValueOnce({ id: "project", name: "looks-like-app", target: "cloud", repo: "team/looks-like-app", rootDir: "", latestDeployment: null } as Awaited<ReturnType<typeof getProject>>);
+  vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ app_name: null, env: {}, database_url: null }] } as never);
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  const result = await getMonitor("owner", "project", { window: "15m", level: "all" });
+  expect(result.appName).toBeNull(); expect(result.metrics.state).toBe("pending");
+  expect(fetch).not.toHaveBeenCalled();
 });

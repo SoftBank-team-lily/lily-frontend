@@ -162,7 +162,7 @@ DB 트랜잭션과 행 잠금으로 동시 상태 변경을 처리합니다.
 
 로그인 및 이메일 인증, 프로젝트 소유권을 확인한다. `window`: `5m|15m|1h|6h`, `level`: `all|error`.
 앱 이름은 최신 `builder_runs.app_name`에서 찾는다. 요청에 앱 이름·namespace·서비스 URL을 받지 않는다.
-응답: `project`, `appName`, `namespace`, `window`, `generatedAt` 및 아래 리소스.
+응답: 화면에 필요한 배포 요약만 포함한 `project`, `agent`, `appName`, `namespace`, `window`, `generatedAt` 및 아래 리소스.
 
 | 필드 | 연결 서비스 |
 | --- | --- |
@@ -182,3 +182,5 @@ DB 트랜잭션과 행 잠금으로 동시 상태 변경을 처리합니다.
 
 `DASHBOARD_ORIGIN` 설정 시 프로젝트 entry의 destination은 `/dashboard?project={UUID}`이다.
 꽃 진입은 성공한 배포에만 허용한다. 계정의 대시보드 링크는 실패/진행 중인 프로젝트도 조회할 수 있다.
+
+`agent`는 onprem 사용자 본인의 에이전트 연결 상태(토큰 제외)이며 관측 지원 여부와 별개입니다.

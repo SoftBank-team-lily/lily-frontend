@@ -92,32 +92,34 @@ Server Component인 `app/page.tsx`에서 일반 함수 콜백을 직접 넘기�
 공개 시연 결과에는 실제 진입 권한을 부여하지 않습니다. 미로그인 상태에서 시연 꽃을
 클릭하면 확대 전에 로그인 화면으로 이동합니다.
 
-`DASHBOARD_URL`에 목적지를 설정하면 확대 후 다시 권한을 확인하고 이동합니다.
-현재 목적지는 미설정이며 “대시보드 연결 준비 중입니다.”를 표시하고 복귀합니다.
+`DASHBOARD_ORIGIN`에 대시보드 서버 원점을 설정하면 확대 후 다시 권한을 확인하고
+`/dashboard?project=<UUID>`로 이동합니다. 로그인 세션을 유지하고 대시보드 서버와
+관측 API에서 소유권을 다시 확인합니다. 미설정 시 연결 준비 안내를 표시합니다.
 콜백 실패 시에도 복귀하며 배포 결과를 유지합니다.
 모션 감소 설정에서는 확대를 생략합니다. 꽃 로딩·WebGL 오류 시에는
 “대시보드로 이동” 대체 버튼을 사용합니다.
 
-배포 API는 대기 기록 생성과 실행기 상태 수신까지 구현했습니다. 실제 배포 실행 엔진,
-대시보드 UI, 외부 대시보드 SSO는 아직 연결하지 않았습니다.
+배포 실행기는 `BUILDER_URL`의 builder에 작업을 전달합니다. 대시보드는 별도 Next.js 앱이며
+같은 공개 origin의 `/dashboard` 경로로 연결합니다. 계정의 대시보드 버튼은 실패·배포 중인
+프로젝트도 열 수 있습니다. 꽃 클릭은 성공한 배포에만 허용합니다.
 
 ## 인프라 연동 검토
 
 팀 피드백의 이메일 인증 생략·배포 설정 확대·Dockerfile 자동 생성·조직 제한 해제 연동은
 [후속 태스크 계획 T19~T29](docs/DEPLOY.md)에 분류했습니다. 아래 내용은 현재 구현 기준이며,
-새 인증 정책과 배포 설정은 아직 적용하지 않았습니다.
+별도 사용자 아이디·이메일 인증 생략 정책은 아직 적용하지 않았습니다. 배포 설정·실행기·대시보드 연결은 아래 현재 상태를 참고하세요.
 
 **현재 구조는 Nginx 뒤에서 UI·API를 함께 운영하고 외부 배포 실행기를 붙일 수 있는 기반입니다.**
-다만 실제 배포 요청 전달·진행률 수신까지 연결된 상태는 아닙니다. 아래 내용은 코드 검토 결과이며,
-운영 Nginx·실행기와의 통합 동작은 아직 검증하지 않았습니다.
+실제 배포 요청·진행 단계·로그·실패 수정과 재배포, 중지·시작·삭제가 연결되어 있습니다.
+관측 API와 대시보드 연결 코드는 로컬에서 검증했으며, 운영 Nginx·클러스터 통합 검증은 남아 있습니다.
 
 | 연결 대상         | 현재 준비된 부분                                                 | 추가로 필요한 부분                                                |
 | ----------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Nginx·도메인·TLS  | UI와 `/api`를 같은 Next.js 서버에서 제공, 상대 경로 요청         | 도메인·인증서·프록시 설정·운영 프로세스 관리                      |
 | PostgreSQL·메일   | 환경 변수로 DB·SMTP 교체, 마이그레이션 제공                      | 운영 DB·SMTP·백업·연결 수 관리                                    |
-| 배포 실행기       | 대기 기록 생성, 서버 전용 이벤트 API, 중복 이벤트·상태 전환 처리 | 실행기로 작업 전달, 실행기 인증·작업 선점·실패 복구               |
-| 실제 배포 UI      | 프로젝트 등록·상태 표시·성공 프로젝트 꽃 진입                    | 실제 배포 시작 버튼, 상태 자동 갱신·진행률 API                    |
-| 대시보드          | 꽃 전환 콜백, 서버 소유권 확인, `DASHBOARD_URL`                  | 대상 앱·세션 검증·외부 앱 SSO                                     |
+| 배포 실행기 | builder 요청·폴링·진단·자동 수정·롤백 결과 | 접근 가능한 내부 BUILDER_URL, 운영 배포 검증 |
+| 실제 배포 UI | 등록·설정·배포·폴링·진행 로그·재배포·중지/시작/삭제 | 실제 인프라 동작 확인 |
+| 대시보드 | 같은 origin 진입, 인증·소유권, observer/ingress/DB 어댑터 | 내부 서비스 URL·토큰과 운영 라우팅 |
 | 컨테이너·모니터링 | 개발용 DB·Mailpit Compose                                        | 앱 Dockerfile·운영 Compose/배포 명세·상태 점검 API·로그/지표 수집 |
 
 ### 권장 배치와 담당 경계
@@ -126,9 +128,9 @@ Server Component인 `app/page.tsx`에서 일반 함수 콜백을 직접 넘기�
 브라우저 → HTTPS Nginx → Lily Next.js (UI + /api)
                               ├→ PostgreSQL
                               ├→ SMTP
-                              └→ 작업 큐 → 배포 실행기   [추가 구현]
-                                             └→ Lily 실행기 이벤트 API
-꽃 진입 → 대시보드 URL                        [대상 앱 연동]
+                              ├→ DB 배포 큐 → lily-builder → lily-cicd / onprem
+                              └→ observer / ingress / DB provisioner
+꽃 진입 → /dashboard → 별도 Next.js → Lily 프로젝트 API (Cookie + 소유권 확인)
 ```
 
 초기에는 **하나의 공개 도메인에서 UI와 API를 함께 제공**하는 구성이 현재 코드에 가장 잘 맞습니다.
@@ -161,7 +163,12 @@ API를 다른 도메인으로 분리하려면 클라이언트 주소·쿠키·CO
 | `BETTER_AUTH_SECRET`    | 32자 이상의 무작위 비밀키. 재시작·복제 인스턴스에서 동일하게 유지                                         |
 | `SMTP_URL`, `MAIL_FROM` | 운영 SMTP 연결 문자열·인증된 발신 주소. Mailpit은 개발용                                                  |
 | `DEPLOYMENT_API_KEY`    | 인증 비밀키와 별개의 32자 이상 무작위 키. Lily 서버와 실행기에서만 공유                                   |
-| `DASHBOARD_URL`         | 선택 사항. 운영은 HTTPS 대상 URL. 미설정 시 꽃 확대 후 준비 중 안내                                       |
+| `DASHBOARD_ORIGIN` | 대시보드 내부 원점. 예: `http://127.0.0.1:3001`. 프런트 빌드와 실행 시 설정 |
+| `DASHBOARD_URL` | 이전 외부 목적지 방식. 이동만 제공하며 외부 SSO는 별도 구성 필요 |
+| `OBSERVABILITY_URL`, `OBSERVABILITY_API_TOKEN` | observer 내부 URL와 Bearer 토큰 |
+| `INGRESS_API_URL`, `INGRESS_API_TOKEN` | ingress 관리 API 내부 URL와 Bearer 토큰 |
+| `PROVISIONER_URL`, `PROVISIONER_API_TOKEN` | DB provisioner 내부 URL와 Bearer 토큰 |
+| `DEPLOYMENT_NAMESPACE` | 실제 앱 namespace. 기본 `default` |
 
 비밀값은 배포 플랫폼의 환경 변수·Secret으로 주입합니다. `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
 현재 서버 모듈이 로딩될 때 `DATABASE_URL`·`BETTER_AUTH_URL`·`BETTER_AUTH_SECRET`을 검사하므로
@@ -304,20 +311,56 @@ GitHub App 설치 또는 별도 GitHub 자격 증명·권한 연동이 필요합
 
 ### 대시보드와 운영 보완 순서
 
-`DASHBOARD_URL=https://dashboard.example.com`을 설정하면 꽃 확대 후
-`https://dashboard.example.com/?project=<UUID>`로 이동합니다. 기존 URL 경로·쿼리는 유지합니다.
-이 설정은 이동 주소만 연결하며 로그인 SSO를 구성하지 않습니다. 현재 쿠키는 Lily 호스트 전용이고,
-대상 앱은 프로젝트 ID를 받은 뒤 별도로 세션·소유권을 검증해야 합니다.
-같은 도메인의 `/dashboard`에 별도 앱을 프록시하더라도 Next.js 기본 라우팅·쿠키 정책·대상 앱의
-권한 검증을 함께 정해야 합니다. 대상 UI 라우트는 아직 없습니다.
+로컬 연결 예시:
 
-운영 연결 작업은 다음 순서가 적합합니다.
+```text
+프런트: pnpm dev --hostname 127.0.0.1 --port 3210
+  .env.local → DASHBOARD_ORIGIN=http://127.0.0.1:3000
+대시보드: npm run dev -- --port 3000
+  .env.local → FRONTEND_URL=http://127.0.0.1:3210
+브라우저: http://localhost:3210/dashboard
+```
 
-1. 공개 도메인·TLS·Nginx·운영 DB·SMTP를 준비하고 회원가입·인증 메일·로그인 흐름을 연결합니다.
-2. 실제 배포 버튼 → 기록/outbox → 큐 → 실행기를 연결하고 이벤트를 받아 상태를 갱신합니다.
-3. 상태 자동 갱신·진행률·로그 계약을 추가하고 기존 꽃 표현에 실제 데이터를 전달합니다.
-4. 대시보드 목적지와 대상 앱의 인증·소유권 검증을 연결합니다.
-5. 운영용 Dockerfile/배포 명세, liveness·DB readiness API, 로그·지표와 백업을 추가합니다.
+대시보드는 [lily-monitoring-dashboard](https://github.com/SoftBank-team-lily/lily-monitoring-dashboard)의
+별도 앱입니다. `basePath=/dashboard`로 빌드하며 `/dashboard/_next/*`와 정적 파일도 같은 경로로 전달합니다.
+로그인 후 내 프로젝트 목록이나 `/dashboard?project=<UUID>`로 접근합니다. 명시적 데모는 `/dashboard/demo`입니다.
+`FRONTEND_URL`은 대시보드 서버 전용입니다. 같은 공개 origin에서는 `FRONTEND_PUBLIC_URL`을 비워 두세요.
+다른 포트로 대시보드를 직접 열 때는 `FRONTEND_PUBLIC_URL`을 공개 프런트 주소로 지정할 수 있습니다.
+다른 도메인 간 세션 공유를 제공하는 설정은 아닙니다.
+
+기존 Nginx 예시에 대시보드 upstream을 추가하려면 아래처럼 설정합니다.
+프런트는 3000, 대시보드는 3001에서 실행하는 예이며 `proxy_pass` 뒤에 `/`를 붙여 접두사를 제거하지 않습니다.
+
+```nginx
+upstream lily_dashboard { server 127.0.0.1:3001; }
+# 기존 server 블록 안:
+location = /dashboard {
+    proxy_pass http://lily_dashboard;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_cache off;
+}
+location ^~ /dashboard/ {
+    proxy_pass http://lily_dashboard;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_cache off;
+}
+```
+
+Next rewrite로 프록시해도 되고 운영 Nginx/Ingress에서 위처럼 분기해도 됩니다.
+두 경우 모두 꽃 진입을 위해 `DASHBOARD_ORIGIN`을 지정하세요.
+대시보드 → 프런트의 `/api/projects/*` 요청은 매번 Cookie·소유권을 검사합니다.
+관측 토큰을 브라우저에 주거나 클러스터 전체 목록을 그대로 전달하지 않습니다.
+
+남은 운영 작업:
+
+1. 프런트 서버에서 접근 가능한 builder/observer/ingress/provisioner URL과 서비스 토큰을 주입합니다.
+2. 운영 도메인·TLS·프록시를 적용한 뒤 같은 origin에서 로그인과 대시보드 복귀를 확인합니다.
+3. 실제 프로젝트 배포·실패·롤백과 관측 수집을 검증합니다. 로컬 계약 응답 검사는 실제 배포 검증을 대신하지 않습니다.
+4. [남은 모듈 연동](docs/INTEGRATION.md)의 수동 롤백 조작, 라우터 전환, 인증 정책 등은 별도 작업으로 진행합니다.
 
 현재 상태 점검 전용 API는 없습니다. `/login` 응답은 HTTP 서비스 확인에만 사용할 수 있고
 DB 가용성 확인을 대신하지 않습니다. DB 풀은 프로세스당 최대 10개 연결로 고정되어 있으므로
