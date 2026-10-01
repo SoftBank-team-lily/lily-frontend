@@ -37,6 +37,10 @@ export async function POST(request: Request) {
         healthPath: input.healthPath,
         env: input.env,
         database: input.database,
+        databaseLocation: input.databaseLocation,
+        databaseUrl: input.databaseUrl,
+        generateEnv: input.generateEnv,
+        reuseEnv: input.reuseEnv,
       }),
       201,
     );

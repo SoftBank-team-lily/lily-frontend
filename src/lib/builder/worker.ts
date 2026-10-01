@@ -1,10 +1,18 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { createDeployment, recordEvent } from "@/lib/projects/server";
-import type { DatabaseChoice } from "@/lib/projects/types";
+import {
+  AUTO_FIX_KEY,
+  createDeployment,
+  fixProject,
+  recordEvent,
+} from "@/lib/projects/server";
+import type { DatabaseChoice, DatabaseLocation, Diagnosis } from "@/lib/projects/types";
 import {
   BuilderRejected,
   buildSettings,
+  autoFixAttempt,
+  fixInput,
+  MAX_AUTO_FIX,
   resultLine,
   runOnce,
   type RunDeps,
@@ -71,9 +79,12 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         health_path: string | null;
         env: Record<string, string>;
         database: DatabaseChoice | null;
+        database_location: DatabaseLocation | null;
+        database_url: string | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
-          p.branch, p.root_dir, p.port, p.health_path, p.env, p.database FROM deployments d
+          p.branch, p.root_dir, p.port, p.health_path, p.env, p.database,
+          p.database_location, p.database_url FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -94,6 +105,9 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           healthPath: row.health_path,
           env: row.env,
           database: row.database,
+          ...(row.target === "onprem"
+            ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
+            : {}),
         },
       }));
     },
@@ -122,16 +136,18 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
     async saveResult(deploymentId, result) {
       // builder 로 보내기 전 실패면 기록이 없어서 새로 만든다 (build_id 없이)
       await db.query(
-        `INSERT INTO builder_runs(deployment_id, build_id, app_name, url, message)
-        VALUES ($1, NULL, $2, $3, $4)
+        `INSERT INTO builder_runs(deployment_id, build_id, app_name, url, message, diagnosis)
+        VALUES ($1, NULL, $2, $3, $4, $5::jsonb)
         ON CONFLICT (deployment_id) DO UPDATE SET
           url=COALESCE(EXCLUDED.url, builder_runs.url),
-          message=COALESCE(EXCLUDED.message, builder_runs.message)`,
+          message=COALESCE(EXCLUDED.message, builder_runs.message),
+          diagnosis=COALESCE(EXCLUDED.diagnosis, builder_runs.diagnosis)`,
         [
           deploymentId,
           result.appName ?? "",
           result.url ?? null,
           result.message ?? null,
+          result.diagnosis ? JSON.stringify(result.diagnosis) : null,
         ],
       );
     },
@@ -160,13 +176,54 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         status: string;
         url: string | null;
         logs?: string[];
+        diagnosis?: Diagnosis | null;
       };
       return {
         status: build.status,
         url: build.url ?? null,
         message: resultLine(build.logs),
         logs: build.logs ?? [],
+        diagnosis: build.diagnosis ?? null,
       };
+    },
+    async autoFix(deploymentId, diagnosis) {
+      const found = await db.query<{
+        request_key: string;
+        project_id: string;
+        owner_id: string;
+        env: Record<string, string>;
+        port: number | null;
+        health_path: string | null;
+        root_dir: string;
+        database: string | null;
+      }>(
+        `SELECT d.request_key, d.project_id, p.owner_id, p.env, p.port, p.health_path, p.root_dir, p.database
+        FROM deployments d JOIN projects p ON p.id=d.project_id WHERE d.id=$1`,
+        [deploymentId],
+      );
+      const row = found.rows[0];
+      if (!row) return false;
+      const attempt = autoFixAttempt(row.request_key);
+      if (attempt >= MAX_AUTO_FIX) return false;
+      const input = fixInput(diagnosis);
+      if (!input) return false;
+      // 이미 넣은 값으로 또 실패했으면 같은 걸 다시 해도 소용없다
+      const changes =
+        input.generateEnv.some((key) => !row.env?.[key]) ||
+        Object.entries(input.env).some(([key, value]) => row.env?.[key] !== value) ||
+        (input.port !== undefined && input.port !== row.port) ||
+        (input.healthPath !== undefined && input.healthPath !== row.health_path) ||
+        (input.rootDir !== undefined && input.rootDir !== row.root_dir) ||
+        (input.database !== undefined && input.database !== row.database);
+      if (!changes) return false;
+      await fixProject(row.owner_id, row.project_id, input, false);
+      const origin = row.request_key.replace(/^auto-fix-\d+-/, "");
+      await createDeployment(
+        row.owner_id,
+        row.project_id,
+        `${AUTO_FIX_KEY}${attempt + 1}-${attempt ? origin : deploymentId}`,
+      );
+      return true;
     },
     async saveProgress(deploymentId, stage, logs) {
       await db.query(

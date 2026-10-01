@@ -15,7 +15,8 @@ const healthPathSchema = z
   .string()
   .trim()
   .max(200)
-  .regex(/^(\/[!-~]*)?$/, "헬스 체크 경로는 /로 시작해야 해요.");
+  // tcp: 주소 대신 포트가 열렸는지만 본다 (lily-builder)
+  .regex(/^(tcp|\/[!-~]*)?$/, "헬스 체크 경로는 /로 시작해야 해요.");
 const envKeySchema = z
   .string()
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "환경변수 이름은 영문, 숫자, _ 만 쓸 수 있어요.")
@@ -24,6 +25,17 @@ const envSchema = z
   .record(envKeySchema, z.string().max(4000))
   .refine((value) => Object.keys(value).length <= 50, "환경변수는 50개까지예요.");
 export const databaseSchema = z.enum(["postgres", "mysql", "none"]);
+export const databaseLocationSchema = z.enum(["local", "external", "cloud"]);
+/** 사용자 DB 주소. lily-builder BuildRequest.databaseUrl 과 같은 형식 */
+export const databaseUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .regex(
+    /^(postgres|postgresql|mysql):\/\/[^\s:@/]+:[^\s@]+@[^\s:/]+(:\d+)?\/[^\s/?]+(\?\S*)?$/,
+    "DB 주소는 postgresql://계정:비밀번호@호스트:포트/DB이름 형식이에요.",
+  );
+const envKeysSchema = z.array(envKeySchema).max(50);
 function settingsShape() {
   return {
     branch: pathSchema.optional(),
@@ -35,33 +47,73 @@ function settingsShape() {
     env: envSchema.optional(),
   };
 }
+const repoSchema = z
+  .string()
+  .max(300)
+  .transform((value, ctx) => {
+    const repo = parseRepo(value);
+    if (!repo) {
+      ctx.addIssue({
+        code: "custom",
+        message: "GitHub 레포 주소를 확인해 주세요.",
+      });
+      return z.NEVER;
+    }
+    return repo.toLowerCase();
+  });
 export const projectSchema = z
   .object({
-    repo: z
-      .string()
-      .max(300)
-      .transform((value, ctx) => {
-        const repo = parseRepo(value);
-        if (!repo) {
-          ctx.addIssue({
-            code: "custom",
-            message: "GitHub 레포 주소를 확인해 주세요.",
-          });
-          return z.NEVER;
-        }
-        return repo.toLowerCase();
-      }),
+    repo: repoSchema,
     name: nameSchema.optional(),
     target: z.enum(["cloud", "onprem"]).optional(),
     ...settingsShape(),
     // 등록할 때만 받는다. 바꾸면 tenant DB 가 엔진마다 따로 생겨서 updateSchema 에는 없다
     database: databaseSchema.optional(),
+    // 온프레미스 DB 위치. external 이면 databaseUrl 이 있어야 한다
+    databaseLocation: databaseLocationSchema.optional(),
+    databaseUrl: databaseUrlSchema.optional(),
+    // 배포 전 확인 창: 서버가 랜덤 값을 만들 키, 같은 레포 다른 프로젝트 값을 가져올 키
+    generateEnv: envKeysSchema.optional(),
+    reuseEnv: envKeysSchema.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.databaseLocation === "external" && !value.databaseUrl)
+      ctx.addIssue({ code: "custom", message: "사용할 DB 주소를 넣어 주세요." });
+    if (value.databaseUrl && value.databaseLocation !== "external")
+      ctx.addIssue({ code: "custom", message: "DB 주소는 '이미 있는 DB'를 고를 때만 넣어요." });
+    if (value.databaseLocation && value.target !== "onprem")
+      ctx.addIssue({ code: "custom", message: "DB 위치는 온프레미스 프로젝트만 정해요." });
+    if (value.databaseUrl && value.database && value.database !== "none") {
+      const engine = value.databaseUrl.startsWith("mysql:") ? "mysql" : "postgres";
+      if (engine !== value.database)
+        ctx.addIssue({
+          code: "custom",
+          message: `DB 주소가 ${engine === "mysql" ? "MySQL" : "PostgreSQL"}인데 고른 DB와 달라요.`,
+        });
+    }
+  });
+/** 실패한 배포 고치기. 앱 폴더와 DB 는 한 번도 성공하지 않은 프로젝트만 바꾼다 (fixProject) */
+export const fixSchema = z
+  .object({
+    env: envSchema.optional(),
+    generateEnv: envKeysSchema.optional(),
+    reuseEnv: envKeysSchema.optional(),
+    port: portSchema.optional(),
+    healthPath: healthPathSchema.optional(),
+    database: databaseSchema.optional(),
+    rootDir: pathSchema
+      .transform((value) => value.replace(/^\/+|\/+$/g, ""))
+      .optional(),
+    // false 면 저장만 한다 (랜딩은 저장한 뒤 배포를 따라가며 다시 시작한다)
+    redeploy: z.boolean().optional(),
   })
   .strict();
+export type ProjectFix = z.infer<typeof fixSchema>;
 /** 등록 전 DB 감지. 폴더·브랜치는 등록할 값과 같게 보낸다 */
 export const detectSchema = z
   .object({
-    repo: projectSchema.shape.repo,
+    repo: repoSchema,
     branch: pathSchema.optional(),
     rootDir: pathSchema
       .transform((value) => value.replace(/^\/+|\/+$/g, ""))

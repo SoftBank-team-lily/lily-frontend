@@ -5,8 +5,13 @@
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
 // 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
 // builder FAILED·ROLLED_BACK·기록 없음 → failed
+// failed 이고 builder 진단(규칙 + AI)에 고칠 방법이 있으면 묻지 않고 설정을 고쳐 다시 배포한다
+//   (비밀값 생성, 기본값, 외부 서비스 키는 unset, 포트·헬스 경로·DB·앱 폴더). 최대 MAX_AUTO_FIX 번,
+//   같은 값으로 또 실패하면 그 전에 멈추고 화면이 원인과 입력 칸을 보인다
 //
 // 상태는 recordEvent 로만 바꾼다 (전환 규칙을 그대로 따른다).
+
+import type { Diagnosis } from "@/lib/projects/types";
 
 export type Pending = {
   deploymentId: string;
@@ -22,6 +27,8 @@ export type BuildState = {
   status: string;
   url: string | null;
   message: string | null;
+  /** 실패했을 때 원인과 고칠 방법 (lily-builder FailureDiagnoser) */
+  diagnosis?: Diagnosis | null;
   /** builder 로그 끝부분. 화면이 진행 단계와 로그를 보여 준다 */
   logs?: string[];
 };
@@ -31,6 +38,7 @@ export type RunResult = {
   appName?: string;
   url?: string | null;
   message?: string | null;
+  diagnosis?: Diagnosis | null;
 };
 export type Active = {
   deploymentId: string;
@@ -50,6 +58,10 @@ export type DeploySettings = {
   env?: Record<string, string>;
   /** 등록할 때 사용자가 고른 DB. null 이면 BUILDER_DATABASE (auto) */
   database?: "postgres" | "mysql" | "none" | null;
+  /** 온프레미스 DB 위치 (local·external·cloud). null 이면 builder 기본값 cloud */
+  databaseLocation?: "local" | "external" | "cloud" | null;
+  /** external 일 때 DB 주소 */
+  databaseUrl?: string | null;
 };
 
 export type RunDeps = {
@@ -74,6 +86,10 @@ export type RunDeps = {
   ): Promise<string>;
   /** builder 에 기록이 없으면 null */
   buildStatus(buildId: string): Promise<BuildState | null>;
+  /**
+   * 진단대로 설정을 고치고 다시 배포한다. 이미 자동으로 다시 보낸 배포면 false (한 번만)
+   */
+  autoFix?(deploymentId: string, diagnosis: Diagnosis): Promise<boolean>;
   /** 진행 중인 builder 상태와 로그 끝부분을 남긴다 */
   saveProgress?(deploymentId: string, stage: string, logs: string[]): Promise<void>;
   event(
@@ -108,11 +124,21 @@ export async function runOnce(deps: RunDeps) {
         await deps.saveResult(active.deploymentId, { url: state.url });
       if (result === "failed")
         await deps.saveResult(active.deploymentId, {
-          message: state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
+          message:
+            state?.diagnosis?.cause ?? state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
+          diagnosis: state?.diagnosis ?? null,
         });
       if (result) {
         await deps.event(active.deploymentId, result);
         log(`배포 ${active.deploymentId}: ${result} (빌드 ${active.buildId})`);
+      }
+      if (result === "failed" && state?.diagnosis?.fixes.length && deps.autoFix) {
+        try {
+          if (await deps.autoFix(active.deploymentId, state.diagnosis))
+            log(`배포 ${active.deploymentId}: 진단대로 고쳐 다시 배포합니다 (${state.diagnosis.cause})`);
+        } catch (error) {
+          log(`배포 ${active.deploymentId} 자동 고치기 실패: ${message(error)}`);
+        }
       }
     } catch (error) {
       log(`배포 ${active.deploymentId} 상태 확인 실패: ${message(error)}`);
@@ -244,5 +270,54 @@ export function buildSettings(settings: DeploySettings | undefined) {
     ...(settings.database
       ? { database: settings.database === "none" ? "" : settings.database }
       : {}),
+    // 온프레미스 DB 위치 (lily-builder BuildRequest.databaseMode). 클라우드 프로젝트는 비어 있다
+    ...(settings.databaseLocation ? { databaseMode: settings.databaseLocation } : {}),
+    ...(settings.databaseLocation === "external" && settings.databaseUrl
+      ? { databaseUrl: settings.databaseUrl }
+      : {}),
   };
+}
+
+/** 실행기가 묻지 않고 다시 배포하는 최대 횟수. 같은 원인이 되풀이되면 그 전에 멈춘다 */
+export const MAX_AUTO_FIX = 3;
+/** 사용자만 아는 값(외부 서비스 키)을 비워 둘 때 넣는 값. 앱은 뜨고 그 기능만 동작하지 않는다 */
+export const UNSET = "unset";
+
+/**
+ * 진단의 고칠 방법 → 프로젝트 고치기 입력. 묻지 않는다:
+ * 비밀값은 생성, 기본값은 그대로, 외부 서비스 키는 unset, 앱 폴더는 진단이 고른 폴더.
+ * 고칠 방법이 없으면 null (코드를 고쳐야 한다)
+ */
+export function fixInput(diagnosis: Diagnosis) {
+  if (!diagnosis.fixes.length) return null;
+  const input: {
+    env: Record<string, string>;
+    generateEnv: string[];
+    port?: number;
+    healthPath?: string;
+    database?: "postgres" | "mysql" | "none";
+    rootDir?: string;
+  } = { env: {}, generateEnv: [] };
+  for (const fix of diagnosis.fixes) {
+    if (fix.type === "env" && fix.env) {
+      if (fix.kind === "GENERATE") input.generateEnv.push(fix.env);
+      else input.env[fix.env] = fix.kind === "DEFAULT" && fix.value !== null ? fix.value : UNSET;
+    } else if (fix.type === "port" && fix.value && /^\d+$/.test(fix.value)) {
+      input.port = Number(fix.value);
+    } else if (fix.type === "healthPath" && fix.value) {
+      input.healthPath = fix.value;
+    } else if (fix.type === "database" && (fix.value === "postgres" || fix.value === "mysql")) {
+      input.database = fix.value;
+    } else if (fix.type === "rootDir" && (fix.value ?? fix.options[0])) {
+      input.rootDir = fix.value ?? fix.options[0];
+    }
+  }
+  return input;
+}
+
+/** auto-fix-{n}-{처음 실패한 배포 id}. 사용자가 시작한 배포면 0 */
+export function autoFixAttempt(requestKey: string | null | undefined) {
+  const match = /^auto-fix-(\d+)-/.exec(requestKey ?? "");
+  if (match) return Number(match[1]);
+  return requestKey?.startsWith("auto-fix-") ? 1 : 0;
 }

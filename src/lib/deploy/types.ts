@@ -1,3 +1,5 @@
+import type { Diagnosis } from "@/lib/projects/types";
+
 export type RepoRef = string;
 export type DeployResult = {
   repo: RepoRef;
@@ -7,6 +9,10 @@ export type DeployResult = {
   projectId?: string;
   url?: string | null;
   message?: string | null;
+  /** 실패했을 때 원인과 고칠 방법 */
+  diagnosis?: Diagnosis | null;
+  /** 값을 몰라 unset 으로 넣은 환경변수. 넣으면 그 기능이 켜진다 */
+  unsetKeys?: string[];
 };
 export type FlowerTargets = { progress: number; wilt: number };
 export type DeployEvent =

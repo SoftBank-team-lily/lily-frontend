@@ -24,6 +24,11 @@ function project(status: string | null, extra: Record<string, unknown> = {}) {
       : null,
   };
 }
+/** 실행기가 자동으로 고쳐 다시 보낸 배포 (d2) */
+function retried(status: string) {
+  const base = project(status);
+  return { ...base, latestDeployment: { ...base.latestDeployment!, id: "d2", autoFixed: true } };
+}
 function respond(status: number, body: unknown) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
@@ -123,6 +128,8 @@ describe("배포 화면", () => {
       rootDir: "frontend",
       env: { VITE_API_URL: "https://api.example.com" },
       database: "mysql",
+      generateEnv: [],
+      reuseEnv: [],
     });
     expect(screen.getByText("배포 완료")).toBeInTheDocument();
     expect(screen.getByRole("link")).toHaveAttribute(
@@ -207,6 +214,104 @@ describe("배포 화면", () => {
     fireEvent.click(screen.getByRole("button", { name: "로그인" }));
     expect(login).toHaveBeenCalledTimes(1);
   });
+  it("확인 창이 비밀값은 자동 생성, 예시 값은 미리 채우고, 비워 둔 외부 키는 unset 으로 보낸다", async () => {
+    fetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/projects?limit=100")
+        return respond(200, { items: [], nextCursor: null });
+      if (url === "/api/detect")
+        return respond(200, {
+          database: "postgres",
+          detection: {
+            database: "postgres",
+            dir: null,
+            apps: [],
+            problem: null,
+            config: [
+              { env: "JWT_SECRET", property: "jwt.secret", kind: "GENERATE", value: null, hint: "비밀값", required: true, source: "a" },
+              { env: "JWT_EXPIRATION", property: "jwt.expiration", kind: "DEFAULT", value: "3600000", hint: "만료", required: true, source: "a" },
+              { env: "KAKAO_REST_API_KEY", property: "kakao.rest-api-key", kind: "INPUT", value: null, hint: "카카오", required: true, source: "a" },
+              { env: "AI_OPENAI_API_KEY", property: "ai.openai.api-key", kind: "INPUT", value: null, hint: "OpenAI", required: true, source: "a", reusable: true },
+            ],
+          },
+        });
+      if (url === "/api/projects" && init?.method === "POST")
+        return respond(201, project("queued"));
+      return respond(200, project("succeeded"));
+    });
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+
+    expect(screen.getByRole("dialog", { name: "배포 전 확인" })).toBeInTheDocument();
+    expect(screen.getByLabelText("JWT_EXPIRATION")).toHaveValue("3600000");
+    expect(screen.getByText(/같은 레포의 다른 프로젝트에 넣은 값을 써요/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "생성" }));
+    await act(() => vi.runAllTimersAsync());
+
+    expect(JSON.parse(callTo("/api/projects", "POST")[1].body)).toMatchObject({
+      generateEnv: ["JWT_SECRET"],
+      reuseEnv: ["AI_OPENAI_API_KEY"],
+      env: { JWT_EXPIRATION: "3600000", KAKAO_REST_API_KEY: "unset" },
+    });
+  });
+
+  it("실행기가 자동으로 고쳐 다시 보낸 배포를 이어서 따라간다", async () => {
+    const diagnosis = {
+      cause: "JWT_SECRET 이(가) 없어서 시작하지 못했어요.",
+      fixes: [{ type: "env", env: "JWT_SECRET", kind: "GENERATE", value: null, hint: null, options: [], auto: true }],
+      source: "rule",
+      autoFixable: true,
+    };
+    states = [
+      project("failed", { diagnosis, autoFixed: false }),
+      retried("running"),
+      retried("succeeded"),
+    ];
+    render(<LandingPage />);
+    submit();
+    await create();
+    await act(() => vi.runAllTimersAsync());
+
+    expect(screen.getByText("배포 완료")).toBeInTheDocument();
+  });
+
+  it("실패 원인에 사용자만 아는 값이 있으면 입력받아 고친 뒤 다시 배포한다", async () => {
+    const diagnosis = {
+      cause: "설정 KAKAO_REST_API_KEY 이(가) 없어요.",
+      fixes: [{ type: "env", env: "KAKAO_REST_API_KEY", kind: "INPUT", value: null, hint: "카카오 키", options: [], auto: false }],
+      source: "rule",
+      autoFixable: false,
+    };
+    states = [project("failed", { diagnosis, autoFixed: false })];
+    fetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === `/api/projects/${PROJECT}/fix`) return respond(200, project("failed"));
+      if (url === "/api/projects?limit=100")
+        return respond(200, { items: registered, nextCursor: null });
+      if (url === "/api/detect") return respond(200, { database: "none" });
+      if (url === `/api/projects/${PROJECT}/deployments`) return respond(201, { id: "d2" });
+      if (url === "/api/projects" && init?.method === "POST") {
+        registered = [project("failed")];
+        return respond(201, project("queued"));
+      }
+      return respond(200, states.shift() ?? project("succeeded"));
+    });
+    render(<LandingPage />);
+    submit();
+    await create();
+    await act(() => vi.runAllTimersAsync());
+
+    expect(screen.getByText(diagnosis.cause)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("KAKAO_REST_API_KEY"), { target: { value: "kakao-123" } });
+    fireEvent.click(screen.getByRole("button", { name: "고쳐서 다시 배포" }));
+    await act(() => vi.runAllTimersAsync());
+
+    expect(JSON.parse(callTo(`/api/projects/${PROJECT}/fix`)[1].body)).toMatchObject({
+      env: { KAKAO_REST_API_KEY: "kakao-123" },
+      redeploy: false,
+    });
+    expect(callTo(`/api/projects/${PROJECT}/deployments`, "POST")).toBeTruthy();
+  });
+
   it("배포가 실패하면 builder 가 남긴 이유를 보여 준다", async () => {
     states = [
       project("failed", { message: "kaniko build failed: npm ci exited 1" }),
