@@ -6,6 +6,8 @@ export type DeploymentStatus =
   | "rolled-back";
 /** 배포 위치. cloud: 플랫폼 클러스터, onprem: 사용자 PC 의 에이전트 */
 export type DeployTarget = "cloud" | "onprem";
+/** 앱 DB. none: DB 없이 배포 */
+export type DatabaseChoice = "postgres" | "mysql" | "none";
 /** 배포 설정. 비어 있으면 lily-builder 가 레포를 보고 정한다 */
 export type DeploySettings = {
   branch?: string;
@@ -13,6 +15,8 @@ export type DeploySettings = {
   port?: number;
   healthPath?: string;
   env?: Record<string, string>;
+  /** 등록할 때만 정한다. 비우면 builder 가 배포할 때 레포를 보고 정한다 */
+  database?: DatabaseChoice;
 };
 export type Project = {
   id: string;

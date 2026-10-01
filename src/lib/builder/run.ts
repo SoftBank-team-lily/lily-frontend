@@ -48,6 +48,8 @@ export type DeploySettings = {
   port?: number | null;
   healthPath?: string | null;
   env?: Record<string, string>;
+  /** 등록할 때 사용자가 고른 DB. null 이면 BUILDER_DATABASE (auto) */
+  database?: "postgres" | "mysql" | "none" | null;
 };
 
 export type RunDeps = {
@@ -238,5 +240,9 @@ export function buildSettings(settings: DeploySettings | undefined) {
       ? { readinessPath: settings.healthPath, livenessPath: settings.healthPath }
       : {}),
     ...(env ? { env } : {}),
+    // 빈 문자열이면 builder 가 DB 없이 배포한다
+    ...(settings.database
+      ? { database: settings.database === "none" ? "" : settings.database }
+      : {}),
   };
 }

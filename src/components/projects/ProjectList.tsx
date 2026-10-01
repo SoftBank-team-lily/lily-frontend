@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { projectRequest, ProjectError } from "@/lib/projects/client";
+import {
+  detectDatabase,
+  projectRequest,
+  ProjectError,
+} from "@/lib/projects/client";
 import type {
+  DatabaseChoice,
   DeployTarget,
   Project,
   ProjectPage,
@@ -14,6 +19,7 @@ import { ProjectItem } from "./ProjectItem";
 import { TargetChoice } from "./TargetChoice";
 import { AgentPanel } from "./AgentPanel";
 import { DeploySettingsFields } from "./DeploySettingsFields";
+import { DatabaseDialog } from "./DatabaseDialog";
 import { readSettings } from "@/lib/projects/settingsForm";
 
 /** 배포가 진행 중이면(첫 배포가 만들어지기 전 포함) 목록을 다시 읽는 주기 */
@@ -32,6 +38,12 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   const [error, setError] = useState("");
   const [target, setTarget] = useState<DeployTarget>("cloud");
   const [agent, setAgent] = useState<AgentState>(null);
+  /** DB 확인을 기다리는 등록. 생성을 누르면 고른 DB 를 넣어 등록한다 */
+  const [choice, setChoice] = useState<{
+    detected: DatabaseChoice;
+    body: Record<string, unknown>;
+    form: HTMLFormElement;
+  } | null>(null);
   const lock = useRef(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
@@ -87,19 +99,30 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
       setError(problem instanceof Error ? problem.message : "입력 내용을 확인해 주세요.");
       return;
     }
+    const body = {
+      repo: String(data.get("repo")),
+      target,
+      ...settings,
+      ...(String(data.get("name") ?? "").trim()
+        ? { name: String(data.get("name")).trim() }
+        : {}),
+    };
+    await request(async (signal) => {
+      const detected = await detectDatabase(body.repo, settings, signal);
+      if (signal.aborted) return;
+      setChoice({ detected, body, form });
+    });
+  }
+  async function confirm(database: DatabaseChoice) {
+    if (!choice) return;
+    const { body, form } = choice;
+    setChoice(null);
     await request(async (signal) => {
       await projectRequest<Project>("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal,
-        body: JSON.stringify({
-          repo: String(data.get("repo")),
-          target,
-          ...settings,
-          ...(String(data.get("name") ?? "").trim()
-            ? { name: String(data.get("name")).trim() }
-            : {}),
-        }),
+        body: JSON.stringify({ ...body, database }),
       });
       const result = await projectRequest<ProjectPage>("/api/projects", {
         signal,
@@ -185,6 +208,13 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
       <p role="alert" className="mt-3 text-caption text-danger">
         {error}
       </p>
+      {choice && (
+        <DatabaseDialog
+          detected={choice.detected}
+          onCancel={() => setChoice(null)}
+          onCreate={confirm}
+        />
+      )}
       {page.items.length ? (
         <ul className="mt-5 space-y-4">
           {page.items.map((project) => (

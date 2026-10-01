@@ -297,6 +297,14 @@ describe("배포 설정", () => {
     });
   });
 
+  it("등록할 때 고른 DB 를 builder 로 넘긴다. 없음은 빈 값 (DB 없이)", () => {
+    expect(buildSettings({ database: "postgres" })).toEqual({ database: "postgres" });
+    expect(buildSettings({ database: "mysql" })).toEqual({ database: "mysql" });
+    expect(buildSettings({ database: "none" })).toEqual({ database: "" });
+    // 이 기능 전에 등록한 프로젝트는 BUILDER_DATABASE(auto) 그대로
+    expect(buildSettings({ database: null })).toEqual({});
+  });
+
   it("등록할 때 정한 설정을 builder 로 넘긴다", async () => {
     const deps = fake();
     let sent: unknown;

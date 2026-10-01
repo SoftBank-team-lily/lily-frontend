@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { createDeployment, recordEvent } from "@/lib/projects/server";
+import type { DatabaseChoice } from "@/lib/projects/types";
 import {
   BuilderRejected,
   buildSettings,
@@ -69,9 +70,10 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         port: number | null;
         health_path: string | null;
         env: Record<string, string>;
+        database: DatabaseChoice | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
-          p.branch, p.root_dir, p.port, p.health_path, p.env FROM deployments d
+          p.branch, p.root_dir, p.port, p.health_path, p.env, p.database FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -91,6 +93,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           port: row.port,
           healthPath: row.health_path,
           env: row.env,
+          database: row.database,
         },
       }));
     },

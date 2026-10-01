@@ -115,8 +115,8 @@ export async function createProject(
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
-    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env, database)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       id,
       ownerId,
@@ -129,6 +129,7 @@ export async function createProject(
       settings.port ?? null,
       settings.healthPath || null,
       JSON.stringify(settings.env ?? {}),
+      settings.database ?? null,
     ],
   );
   return getProject(ownerId, id);

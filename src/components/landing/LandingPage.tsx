@@ -11,6 +11,10 @@ import type { ReadyProject } from "@/lib/projects/types";
 import { toDeployState } from "@/lib/projects/toDeployState";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { readSettings } from "@/lib/projects/settingsForm";
+import { detectDatabase, ProjectError } from "@/lib/projects/client";
+import { findProject } from "@/lib/deploy/realDeploy";
+import type { DatabaseChoice, DeploySettings } from "@/lib/projects/types";
+import { DatabaseDialog } from "@/components/projects/DatabaseDialog";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
 import { DeployStatus } from "@/components/deploy/DeployStatus";
@@ -41,6 +45,14 @@ export function LandingPage({
 }) {
   const [repo, setRepo] = useState(project?.repo ?? "");
   const [error, setError] = useState("");
+  /** 기존 프로젝트·DB 를 확인하는 중 */
+  const [checking, setChecking] = useState(false);
+  /** DB 확인을 기다리는 새 프로젝트. 생성을 누르면 고른 DB 로 등록하고 배포한다 */
+  const [choice, setChoice] = useState<{
+    repo: string;
+    settings: DeploySettings;
+    detected: DatabaseChoice;
+  } | null>(null);
   const nav = useRef<HTMLElement>(null);
   const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -103,9 +115,9 @@ export function LandingPage({
     }),
     [],
   );
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || entry.busy) return;
+    if (disabled || checking || entry.busy) return;
     const parsed = parseRepo(repo);
     if (!parsed) {
       setError(REPO_ERROR);
@@ -121,7 +133,26 @@ export function LandingPage({
     }
     setError("");
     entry.clearMessage();
-    start(parsed, settings);
+    // 이미 등록한 프로젝트는 등록할 때 고른 DB 로 다시 배포한다. 새 프로젝트만 DB 를 묻는다
+    setChecking(true);
+    try {
+      if (await findProject(parsed, settings.rootDir)) {
+        start(parsed, settings);
+        return;
+      }
+      const detected = await detectDatabase(parsed, settings);
+      setChoice({ repo: parsed, settings, detected });
+    } catch (problem) {
+      if (problem instanceof ProjectError && problem.status === 401) onNeedLogin?.();
+      else
+        setError(
+          problem instanceof ProjectError
+            ? problem.message
+            : "서버에 연결하지 못했어요.",
+        );
+    } finally {
+      setChecking(false);
+    }
   }
   function restart() {
     if (entry.busy) return;
@@ -187,10 +218,23 @@ export function LandingPage({
               <DeployForm
                 repo={repo}
                 error={error}
-                disabled={disabled || entry.busy}
+                disabled={disabled || checking || !!choice || entry.busy}
                 inputRef={input}
                 onRepoChange={setRepo}
                 onSubmit={submit}
+              />
+            )}
+            {choice && (
+              <DatabaseDialog
+                detected={choice.detected}
+                onCancel={() => {
+                  setChoice(null);
+                  input.current?.focus();
+                }}
+                onCreate={(database) => {
+                  setChoice(null);
+                  start(choice.repo, { ...choice.settings, database });
+                }}
               />
             )}
             {flowerAvailable && dashboardReady && (

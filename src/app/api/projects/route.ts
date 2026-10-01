@@ -36,6 +36,7 @@ export async function POST(request: Request) {
         port: input.port,
         healthPath: input.healthPath,
         env: input.env,
+        database: input.database,
       }),
       201,
     );

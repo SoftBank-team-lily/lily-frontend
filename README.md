@@ -62,7 +62,8 @@ pnpm test:e2e
 - **배포 위치**: 클라우드는 Lily 클러스터, 내 PC 는 사용자 PC 의 에이전트(lily-on-premise)
 - **내 PC 연결**: "연결 토큰 받기" → 화면의 명령(`scripts/agent.sh`)을 PC 에서 실행 → "연결됨" 이 보이면 등록할 수 있다. 내 PC 프로젝트는 계정당 하나
 - **상태**: 목록이 배포 중에는 4초마다 다시 읽는다. 완료되면 "앱 열기", 실패하면 이유 한 줄과 "다시 배포"
-- 포트·헬스 경로·DB 는 lily-builder 가 레포를 보고 정한다 (`BUILDER_DATABASE=auto`)
+- **DB 확인**: 등록할 때 lily-builder 가 감지한 DB(`POST /api/detect`)를 "감지된 DB" 드롭다운에 골라 두고, 사용자가 바꾼 뒤 생성한다. 감지하지 못하면 "없음". 등록한 뒤에는 바꿀 수 없다 (`projects.database`)
+- 포트·헬스 경로는 lily-builder 가 레포를 보고 정한다. DB 를 고르기 전에 등록한 프로젝트는 `BUILDER_DATABASE=auto`
 
 | 테이블 | 내용 |
 |---|---|

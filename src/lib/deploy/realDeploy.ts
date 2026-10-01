@@ -99,31 +99,39 @@ export async function realDeploy({
   }
 }
 
-/** 같은 레포·폴더가 이미 등록돼 있으면 새로 만들지 않고 다시 배포한다 */
+/** 같은 레포·폴더로 등록한 클라우드 프로젝트. 없으면 null */
+export async function findProject(
+  repo: RepoRef,
+  rootDir: string | undefined,
+  signal?: AbortSignal,
+  request: typeof projectRequest = projectRequest,
+): Promise<Project | null> {
+  const page = await request<ProjectPage>("/api/projects?limit=100", { signal });
+  return (
+    page.items.find(
+      (item) =>
+        item.repo === repo.toLowerCase() &&
+        item.rootDir === (rootDir ?? "").replace(/^\/+|\/+$/g, "") &&
+        item.target === "cloud",
+    ) ?? null
+  );
+}
+
+/** 같은 레포·폴더가 이미 등록돼 있으면 새로 만들지 않고 다시 배포한다 (DB 는 등록할 때 고른 그대로) */
 async function register(
   repo: RepoRef,
   settings: DeploySettings,
   signal: AbortSignal,
   request: typeof projectRequest,
 ): Promise<Project> {
-  try {
-    return await request<Project>("/api/projects", {
+  const existing = await findProject(repo, settings.rootDir, signal, request);
+  if (!existing)
+    return request<Project>("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal,
       body: JSON.stringify({ repo, ...settings }),
     });
-  } catch (error) {
-    if (!(error instanceof ProjectError) || error.status !== 409) throw error;
-  }
-  const page = await request<ProjectPage>("/api/projects?limit=100", { signal });
-  const existing = page.items.find(
-    (item) =>
-      item.repo === repo.toLowerCase() &&
-      item.rootDir === (settings.rootDir ?? "").replace(/^\/+|\/+$/g, "") &&
-      item.target === "cloud",
-  );
-  if (!existing) throw new ProjectError(409, "ALREADY_EXISTS", "이미 등록된 프로젝트예요. 내 계정에서 다시 배포해 주세요.");
   await request(`/api/projects/${existing.id}/deployments`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },

@@ -37,10 +37,18 @@ describe("배포 화면", () => {
   let fetch: ReturnType<typeof vi.fn>;
   /** GET /api/projects/{id} 가 차례로 돌려줄 상태 */
   let states: ReturnType<typeof project>[];
+  /** 이미 등록한 프로젝트 (GET /api/projects) */
+  let registered: ReturnType<typeof project>[];
   beforeEach(() => {
     vi.useFakeTimers();
     states = [];
+    registered = [];
     fetch = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "/api/projects?limit=100")
+        return respond(200, { items: registered, nextCursor: null });
+      if (url === "/api/detect") return respond(200, { database: "postgres" });
+      if (url === `/api/projects/${PROJECT}/deployments`)
+        return respond(201, { id: "d2" });
       if (url === "/api/projects" && init?.method === "POST")
         return respond(201, project("queued"));
       if (url === `/api/projects/${PROJECT}`)
@@ -54,6 +62,18 @@ describe("배포 화면", () => {
     vi.unstubAllGlobals();
   });
   const input = () => screen.getByRole("textbox", { name: "GitHub 레포 주소" });
+  function callTo(url: string, method?: string) {
+    const call = fetch.mock.calls.find(
+      ([value, init]) => value === url && (!method || init?.method === method),
+    );
+    if (!call) throw new Error(`${url} 요청이 없다`);
+    return call as [string, RequestInit & { body: string }];
+  }
+  /** DB 확인 창에서 생성을 누른다 */
+  async function create() {
+    await act(() => vi.runAllTimersAsync());
+    fireEvent.click(screen.getByRole("button", { name: "생성" }));
+  }
   function submit(repo = "o/next.js") {
     fireEvent.change(input(), { target: { value: repo } });
     fireEvent.click(screen.getByRole("button", { name: "배포 시작" }));
@@ -86,10 +106,22 @@ describe("배포 화면", () => {
     expect(input()).toBeDisabled();
     await act(() => vi.runAllTimersAsync());
 
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+    // 감지한 DB 를 미리 골라 둔 확인 창. 다른 DB 로 바꿔 생성할 수 있다
+    const database = screen.getByRole("combobox", { name: "감지된 DB" });
+    expect(database).toHaveValue("postgres");
+    expect(JSON.parse(callTo("/api/detect")[1].body)).toEqual({
+      repo: "o/next.js",
+      rootDir: "frontend",
+    });
+    fireEvent.change(database, { target: { value: "mysql" } });
+    fireEvent.click(screen.getByRole("button", { name: "생성" }));
+    await act(() => vi.runAllTimersAsync());
+
+    expect(JSON.parse(callTo("/api/projects", "POST")[1].body)).toEqual({
       repo: "o/next.js",
       rootDir: "frontend",
       env: { VITE_API_URL: "https://api.example.com" },
+      database: "mysql",
     });
     expect(screen.getByText("배포 완료")).toBeInTheDocument();
     expect(screen.getByRole("link")).toHaveAttribute(
@@ -113,6 +145,7 @@ describe("배포 화면", () => {
     ];
     render(<LandingPage />);
     submit();
+    await create();
     await act(() => vi.runAllTimersAsync());
     expect(screen.getByText("배포하지 못했어요")).toBeInTheDocument();
     expect(screen.getByText(/npm ci exited 1/)).toBeInTheDocument();
@@ -128,6 +161,38 @@ describe("배포 화면", () => {
     await act(() => vi.runAllTimersAsync());
     expect(login).toHaveBeenCalledTimes(1);
     expect(input()).toBeEnabled();
+  });
+  it("DB 확인 창에서 취소하면 등록하지 않는다", async () => {
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(input()).toBeEnabled();
+    expect(
+      fetch.mock.calls.some(([url, init]) => url === "/api/projects" && init?.method === "POST"),
+    ).toBe(false);
+  });
+  it("DB 를 감지하지 못하면 없음을 골라 둔다", async () => {
+    fetch.mockImplementation((url: string) =>
+      url === "/api/detect"
+        ? respond(200, { database: "none" })
+        : respond(200, { items: [], nextCursor: null }),
+    );
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    expect(screen.getByRole("combobox", { name: "감지된 DB" })).toHaveValue("none");
+  });
+  it("이미 등록한 프로젝트는 DB 를 묻지 않고 다시 배포한다", async () => {
+    registered = [project("succeeded")];
+    states = [project("succeeded")];
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(callTo(`/api/projects/${PROJECT}/deployments`, "POST")).toBeTruthy();
+    expect(fetch.mock.calls.some(([url]) => url === "/api/detect")).toBe(false);
   });
   it("환경변수 형식이 틀리면 보내지 않고 알려 준다", () => {
     render(<LandingPage />);

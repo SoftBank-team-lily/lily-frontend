@@ -23,6 +23,7 @@ const envKeySchema = z
 const envSchema = z
   .record(envKeySchema, z.string().max(4000))
   .refine((value) => Object.keys(value).length <= 50, "환경변수는 50개까지예요.");
+export const databaseSchema = z.enum(["postgres", "mysql", "none"]);
 function settingsShape() {
   return {
     branch: pathSchema.optional(),
@@ -53,6 +54,18 @@ export const projectSchema = z
     name: nameSchema.optional(),
     target: z.enum(["cloud", "onprem"]).optional(),
     ...settingsShape(),
+    // 등록할 때만 받는다. 바꾸면 tenant DB 가 엔진마다 따로 생겨서 updateSchema 에는 없다
+    database: databaseSchema.optional(),
+  })
+  .strict();
+/** 등록 전 DB 감지. 폴더·브랜치는 등록할 값과 같게 보낸다 */
+export const detectSchema = z
+  .object({
+    repo: projectSchema.shape.repo,
+    branch: pathSchema.optional(),
+    rootDir: pathSchema
+      .transform((value) => value.replace(/^\/+|\/+$/g, ""))
+      .optional(),
   })
   .strict();
 /**
