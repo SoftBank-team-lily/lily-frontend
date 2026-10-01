@@ -333,6 +333,7 @@ DB 가용성 확인을 대신하지 않습니다. DB 풀은 프로세스당 최�
 - [로그인·회원가입·사용자별 관리 태스크](docs/AUTH.md)
 - [계정·프로젝트 API 계약](docs/API.md)
 - [팀 피드백·실제 배포 연결 태스크](docs/DEPLOY.md)
+- [팀 구현 현황·대시보드와 모듈 연동 목록](docs/INTEGRATION.md)
 - [디자인 규칙](docs/DESIGN.md)
 - [검증 결과와 남은 확인](docs/QA.md)
 - [기준 화면](docs/reference/landing.html)
