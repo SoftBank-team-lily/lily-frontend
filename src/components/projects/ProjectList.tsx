@@ -127,6 +127,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         body: JSON.stringify({
           ...body,
           database: picked.database,
+          ...(picked.databaseLocation ? { databaseLocation: picked.databaseLocation } : {}),
+          ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
           ...(picked.rootDir !== undefined ? { rootDir: picked.rootDir } : {}),
           // 배포 설정 칸에 직접 적은 값이 이긴다
           env: { ...picked.env, ...(body.env ?? {}) },
@@ -221,6 +223,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
       {choice && (
         <DeployCheckDialog
           detection={choice.detection}
+          target={choice.body.target as DeployTarget}
           onCancel={() => setChoice(null)}
           onConfirm={(picked) => void confirm(picked)}
           redetect={(dir) =>

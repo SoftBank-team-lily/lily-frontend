@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ConfigAdvice, DatabaseChoice, Detection } from "@/lib/projects/types";
+import type {
+  ConfigAdvice,
+  DatabaseChoice,
+  DatabaseLocation,
+  DeployTarget,
+  Detection,
+} from "@/lib/projects/types";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 
@@ -10,12 +16,34 @@ const DATABASES: { value: DatabaseChoice; label: string }[] = [
   { value: "mysql", label: "MySQL" },
   { value: "none", label: "없음" },
 ];
+const LOCATIONS: { value: DatabaseLocation; label: string; description: string }[] = [
+  {
+    value: "local",
+    label: "내 PC",
+    description: "에이전트가 이 PC에 DB를 띄워요. 데이터가 PC 밖으로 나가지 않아요.",
+  },
+  {
+    value: "external",
+    label: "이미 있는 DB",
+    description: "운영 중인 DB 주소를 넣으면 그 DB에 붙여요.",
+  },
+  {
+    value: "cloud",
+    label: "클라우드",
+    description: "Lily 클라우드 DB를 터널로 붙여요. 데이터는 클라우드에 있어요.",
+  },
+];
+const DSN = /^(postgres|postgresql|mysql):\/\/[^\s:@/]+:[^\s@]+@[^\s:/]+(:\d+)?\/[^\s/?]+(\?\S*)?$/;
+
 /** 사용자만 아는 필수 값을 비워 두면 넣는 값. 앱은 뜨고 그 기능만 동작하지 않는다 */
 export const UNSET = "unset";
 
 /** 확인 창에서 고른 값. 서버가 랜덤 값 생성과 다른 프로젝트 값 복사를 한다 */
 export type DeployChoice = {
   database: DatabaseChoice;
+  /** 온프레미스이고 DB 가 있을 때만 */
+  databaseLocation?: DatabaseLocation;
+  databaseUrl?: string;
   /** 앱 폴더 후보에서 고른 폴더. 후보가 없으면 undefined */
   rootDir?: string;
   env: Record<string, string>;
@@ -66,6 +94,7 @@ export function choiceOf(
  */
 export function DeployCheckDialog({
   detection: first,
+  target = "cloud",
   savedKeys = [],
   confirmLabel = "생성",
   onCancel,
@@ -73,6 +102,8 @@ export function DeployCheckDialog({
   redetect,
 }: {
   detection: Detection;
+  /** 온프레미스면 DB 위치를 묻는다 */
+  target?: DeployTarget;
   savedKeys?: string[];
   confirmLabel?: string;
   onCancel: () => void;
@@ -85,6 +116,18 @@ export function DeployCheckDialog({
     first.apps.length > 1 ? (first.dir ?? servable[0]?.dir ?? first.apps[0]?.dir) : undefined,
   );
   const [database, setDatabase] = useState<DatabaseChoice>(first.database);
+  const [location, setLocation] = useState<DatabaseLocation>("local");
+  const [databaseUrl, setDatabaseUrl] = useState("");
+  const asksLocation = target === "onprem" && database !== "none";
+  const engineOfUrl = databaseUrl.trim().startsWith("mysql:") ? "mysql" : "postgres";
+  const urlProblem =
+    !asksLocation || location !== "external"
+      ? ""
+      : !DSN.test(databaseUrl.trim())
+        ? "postgresql://계정:비밀번호@호스트:포트/DB이름 형식으로 넣어 주세요."
+        : engineOfUrl !== database
+          ? `주소는 ${engineOfUrl === "mysql" ? "MySQL" : "PostgreSQL"}인데 위에서 고른 DB와 달라요.`
+          : "";
   const config = detection.config.filter((key) => !savedKeys.includes(key.env));
   const [fields, setFields] = useState(() => initial(config));
   const [loading, setLoading] = useState(false);
@@ -181,6 +224,60 @@ export function DeployCheckDialog({
             </select>
           </div>
 
+          {asksLocation && (
+            <fieldset className="mt-5 flex flex-col gap-2 text-control">
+              <legend className="mb-2">DB 위치</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {LOCATIONS.map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex cursor-pointer flex-col gap-1 rounded-xl border border-line p-3 has-[:checked]:border-ink focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent"
+                  >
+                    <input
+                      type="radio"
+                      name="database-location"
+                      value={option.value}
+                      checked={location === option.value}
+                      onChange={() => setLocation(option.value)}
+                      className="sr-only"
+                    />
+                    <span className="font-semibold">{option.label}</span>
+                    <span className="text-caption text-mute">{option.description}</span>
+                  </label>
+                ))}
+              </div>
+              {location === "external" && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  <label htmlFor="database-url" className="text-caption text-ink">
+                    DB 주소
+                  </label>
+                  <TextField
+                    id="database-url"
+                    value={databaseUrl}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(event) => setDatabaseUrl(event.target.value)}
+                    placeholder={
+                      database === "mysql"
+                        ? "mysql://app:비밀번호@localhost:3306/app"
+                        : "postgresql://app:비밀번호@localhost:5432/app"
+                    }
+                  />
+                  <p className="text-caption text-mute">
+                    {urlProblem && databaseUrl.trim()
+                      ? urlProblem
+                      : "localhost 는 에이전트를 띄운 PC를 가리켜요. 계정과 DB는 미리 만들어 두세요."}
+                  </p>
+                </div>
+              )}
+              {location === "cloud" && (
+                <p className="text-caption text-mute">
+                  앱은 이 PC에서 돌지만 데이터는 Lily 클라우드에 저장돼요.
+                </p>
+              )}
+            </fieldset>
+          )}
+
           {loading ? (
             <p className="mt-5 text-caption text-mute">폴더를 다시 살펴보는 중…</p>
           ) : (
@@ -205,11 +302,17 @@ export function DeployCheckDialog({
           </Button>
           <Button
             className="h-10"
-            disabled={loading || needsFolder}
+            disabled={loading || needsFolder || !!urlProblem}
             onClick={() =>
-              onConfirm(
-                choiceOf(config, fields, database, first.apps.length > 1 ? rootDir : undefined),
-              )
+              onConfirm({
+                ...choiceOf(config, fields, database, first.apps.length > 1 ? rootDir : undefined),
+                ...(asksLocation
+                  ? {
+                      databaseLocation: location,
+                      ...(location === "external" ? { databaseUrl: databaseUrl.trim() } : {}),
+                    }
+                  : {}),
+              })
             }
           >
             {confirmLabel}

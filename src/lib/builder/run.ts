@@ -58,6 +58,10 @@ export type DeploySettings = {
   env?: Record<string, string>;
   /** 등록할 때 사용자가 고른 DB. null 이면 BUILDER_DATABASE (auto) */
   database?: "postgres" | "mysql" | "none" | null;
+  /** 온프레미스 DB 위치 (local·external·cloud). null 이면 builder 기본값 cloud */
+  databaseLocation?: "local" | "external" | "cloud" | null;
+  /** external 일 때 DB 주소 */
+  databaseUrl?: string | null;
 };
 
 export type RunDeps = {
@@ -265,6 +269,11 @@ export function buildSettings(settings: DeploySettings | undefined) {
     // 빈 문자열이면 builder 가 DB 없이 배포한다
     ...(settings.database
       ? { database: settings.database === "none" ? "" : settings.database }
+      : {}),
+    // 온프레미스 DB 위치 (lily-builder BuildRequest.databaseMode). 클라우드 프로젝트는 비어 있다
+    ...(settings.databaseLocation ? { databaseMode: settings.databaseLocation } : {}),
+    ...(settings.databaseLocation === "external" && settings.databaseUrl
+      ? { databaseUrl: settings.databaseUrl }
       : {}),
   };
 }

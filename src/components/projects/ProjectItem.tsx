@@ -12,6 +12,11 @@ import { Button } from "@/components/ui/Button";
 import { readUpdate } from "@/lib/projects/settingsForm";
 
 const targetLabels = { cloud: "클라우드", onprem: "온프레미스" } as const;
+const locationLabels = {
+  local: "DB 내 PC",
+  external: "DB 기존 서버",
+  cloud: "DB 클라우드",
+} as const;
 const statusLabels: Record<DeploymentStatus, string> = {
   queued: "배포 대기",
   running: "배포 중",
@@ -159,6 +164,7 @@ export function ProjectItem({
       <p className="mt-1 break-all text-caption text-mute">{project.repo}</p>
       <p className="mt-3 text-caption text-mute">
         {targetLabels[project.target]} ·{" "}
+        {project.databaseLocation && <>{locationLabels[project.databaseLocation]} · </>}
         {project.latestDeployment
           ? statusLabels[project.latestDeployment.status]
           : "배포 기록 없음"}

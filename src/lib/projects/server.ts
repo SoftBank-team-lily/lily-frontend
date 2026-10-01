@@ -9,6 +9,7 @@ import type {
   DeploymentStatus,
   DeployTarget,
   DeploySettings,
+  DatabaseLocation,
   Diagnosis,
   ProjectEntry,
 } from "./types";
@@ -22,6 +23,7 @@ type Row = {
   repo: string;
   name: string;
   target: DeployTarget;
+  database_location: DatabaseLocation | null;
   root_dir: string;
   branch: string | null;
   port: number | null;
@@ -40,7 +42,7 @@ type Row = {
   app_name: string | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.root_dir, p.branch, p.port, p.health_path,
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.database_location, p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
   ARRAY(SELECT key FROM jsonb_each_text(p.env) WHERE value='unset' ORDER BY 1) AS unset_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
   r.diagnosis, d.request_key,
@@ -57,6 +59,7 @@ function project(row: Row, apps: Map<string, AppRuntime> | null = null): Project
     repo: row.repo,
     name: row.name,
     target: row.target,
+    databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
     rootDir: row.root_dir,
     branch: row.branch,
     port: row.port,
@@ -241,8 +244,9 @@ export async function createProject(
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
-    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env, database)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env, database,
+      database_location, database_url)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       id,
       ownerId,
@@ -256,6 +260,9 @@ export async function createProject(
       settings.healthPath || null,
       JSON.stringify(await resolveEnv(ownerId, repo, null, settings)),
       settings.database ?? null,
+      // DB 가 없는 앱이면 위치도 없다
+      target === "onprem" && settings.database !== "none" ? (settings.databaseLocation ?? null) : null,
+      target === "onprem" && settings.databaseLocation === "external" ? (settings.databaseUrl ?? null) : null,
     ],
   );
   return getProject(ownerId, id);
