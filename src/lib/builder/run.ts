@@ -5,8 +5,9 @@
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
 // 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
 // builder FAILED·ROLLED_BACK·기록 없음 → failed
-// failed 인데 builder 진단이 사용자에게 묻지 않고 고칠 수 있다고 하면 (빠진 비밀값, 포트 등)
-//   설정을 고치고 한 번만 다시 배포한다. 자동으로 다시 보낸 배포가 또 실패하면 멈추고 화면이 묻는다
+// failed 이고 builder 진단(규칙 + AI)에 고칠 방법이 있으면 묻지 않고 설정을 고쳐 다시 배포한다
+//   (비밀값 생성, 기본값, 외부 서비스 키는 unset, 포트·헬스 경로·DB·앱 폴더). 최대 MAX_AUTO_FIX 번,
+//   같은 값으로 또 실패하면 그 전에 멈추고 화면이 원인과 입력 칸을 보인다
 //
 // 상태는 recordEvent 로만 바꾼다 (전환 규칙을 그대로 따른다).
 
@@ -127,7 +128,7 @@ export async function runOnce(deps: RunDeps) {
         await deps.event(active.deploymentId, result);
         log(`배포 ${active.deploymentId}: ${result} (빌드 ${active.buildId})`);
       }
-      if (result === "failed" && state?.diagnosis?.autoFixable && deps.autoFix) {
+      if (result === "failed" && state?.diagnosis?.fixes.length && deps.autoFix) {
         try {
           if (await deps.autoFix(active.deploymentId, state.diagnosis))
             log(`배포 ${active.deploymentId}: 진단대로 고쳐 다시 배포합니다 (${state.diagnosis.cause})`);
@@ -268,30 +269,46 @@ export function buildSettings(settings: DeploySettings | undefined) {
   };
 }
 
+/** 실행기가 묻지 않고 다시 배포하는 최대 횟수. 같은 원인이 되풀이되면 그 전에 멈춘다 */
+export const MAX_AUTO_FIX = 3;
+/** 사용자만 아는 값(외부 서비스 키)을 비워 둘 때 넣는 값. 앱은 뜨고 그 기능만 동작하지 않는다 */
+export const UNSET = "unset";
+
 /**
- * 진단의 고칠 방법 → 프로젝트 고치기 입력. 사용자에게 물어야 하는 값이 있으면 null (자동으로 고치지 않는다)
+ * 진단의 고칠 방법 → 프로젝트 고치기 입력. 묻지 않는다:
+ * 비밀값은 생성, 기본값은 그대로, 외부 서비스 키는 unset, 앱 폴더는 진단이 고른 폴더.
+ * 고칠 방법이 없으면 null (코드를 고쳐야 한다)
  */
 export function fixInput(diagnosis: Diagnosis) {
-  if (!diagnosis.autoFixable || !diagnosis.fixes.length) return null;
+  if (!diagnosis.fixes.length) return null;
   const input: {
     env: Record<string, string>;
     generateEnv: string[];
     port?: number;
     healthPath?: string;
     database?: "postgres" | "mysql" | "none";
+    rootDir?: string;
   } = { env: {}, generateEnv: [] };
   for (const fix of diagnosis.fixes) {
-    if (fix.kind === "INPUT") return null;
     if (fix.type === "env" && fix.env) {
       if (fix.kind === "GENERATE") input.generateEnv.push(fix.env);
-      else if (fix.value !== null) input.env[fix.env] = fix.value;
+      else input.env[fix.env] = fix.kind === "DEFAULT" && fix.value !== null ? fix.value : UNSET;
     } else if (fix.type === "port" && fix.value && /^\d+$/.test(fix.value)) {
       input.port = Number(fix.value);
     } else if (fix.type === "healthPath" && fix.value) {
-      input.healthPath = fix.value === "tcp" ? "tcp" : fix.value;
+      input.healthPath = fix.value;
     } else if (fix.type === "database" && (fix.value === "postgres" || fix.value === "mysql")) {
       input.database = fix.value;
+    } else if (fix.type === "rootDir" && (fix.value ?? fix.options[0])) {
+      input.rootDir = fix.value ?? fix.options[0];
     }
   }
   return input;
+}
+
+/** auto-fix-{n}-{처음 실패한 배포 id}. 사용자가 시작한 배포면 0 */
+export function autoFixAttempt(requestKey: string | null | undefined) {
+  const match = /^auto-fix-(\d+)-/.exec(requestKey ?? "");
+  if (match) return Number(match[1]);
+  return requestKey?.startsWith("auto-fix-") ? 1 : 0;
 }
