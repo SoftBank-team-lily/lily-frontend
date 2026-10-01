@@ -7,30 +7,59 @@ import type {
   ProjectPage,
   Deployment,
   DeploymentStatus,
+  DeployTarget,
+  DeploySettings,
   ProjectEntry,
 } from "./types";
+import type { ProjectUpdate } from "./schema";
 
 type Row = {
   id: string;
   repo: string;
   name: string;
+  target: DeployTarget;
+  root_dir: string;
+  branch: string | null;
+  port: number | null;
+  health_path: string | null;
+  env_keys: string[];
   created_at: Date;
   deployment_id: string | null;
   status: DeploymentStatus | null;
+  url: string | null;
+  message: string | null;
+  stage: string | null;
+  logs: string[] | null;
 };
-const selectProject = `SELECT p.id, p.repo, p.name, p.created_at, d.id AS deployment_id, d.status
+// url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.root_dir, p.branch, p.port, p.health_path,
+  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
-  ) d ON true`;
+  ) d ON true
+  LEFT JOIN builder_runs r ON r.deployment_id=d.id`;
 function project(row: Row): Project {
   return {
     id: row.id,
     repo: row.repo,
     name: row.name,
+    target: row.target,
+    rootDir: row.root_dir,
+    branch: row.branch,
+    port: row.port,
+    healthPath: row.health_path,
+    envKeys: row.env_keys,
     createdAt: row.created_at.toISOString(),
     latestDeployment:
       row.deployment_id && row.status
-        ? { id: row.deployment_id, status: row.status }
+        ? {
+            id: row.deployment_id,
+            status: row.status,
+            url: row.url,
+            message: row.message,
+            stage: row.stage,
+            logs: row.logs ?? [],
+          }
         : null,
   };
 }
@@ -67,18 +96,71 @@ export async function createProject(
   ownerId: string,
   repo: string,
   name?: string,
+  target: DeployTarget = "cloud",
+  settings: DeploySettings = {},
 ) {
+  if (target === "onprem") {
+    // 에이전트 하나는 공개 주소 하나, 앱 하나만 띄운다 (lily-on-premise)
+    const existing = await db.query<{ name: string }>(
+      "SELECT name FROM projects WHERE owner_id=$1 AND target='onprem' LIMIT 1",
+      [ownerId],
+    );
+    if (existing.rows[0])
+      throw new ApiError(
+        409,
+        "ONPREM_LIMIT",
+        `내 PC에는 프로젝트를 하나만 둘 수 있어요. 지금은 '${existing.rows[0].name}'이(가) 있어요.`,
+      );
+  }
   const id = randomUUID();
+  const rootDir = settings.rootDir ?? "";
   await db.query(
-    "INSERT INTO projects(id, owner_id, repo, name) VALUES($1,$2,$3,$4)",
-    [id, ownerId, repo, name ?? repo.split("/")[1]],
+    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env, database)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      id,
+      ownerId,
+      repo,
+      // 한 레포의 폴더마다 등록하면 이름으로 구분되게 폴더를 붙인다
+      name ?? (rootDir ? `${repo.split("/")[1]}/${rootDir}` : repo.split("/")[1]),
+      target,
+      settings.branch || null,
+      rootDir,
+      settings.port ?? null,
+      settings.healthPath || null,
+      JSON.stringify(settings.env ?? {}),
+      settings.database ?? null,
+    ],
   );
   return getProject(ownerId, id);
 }
-export async function updateProject(ownerId: string, id: string, name: string) {
+/** 이름과 배포 설정을 바꾼다. 다음 배포부터 쓴다 (지금 떠 있는 앱은 다시 배포해야 바뀐다) */
+export async function updateProject(
+  ownerId: string,
+  id: string,
+  input: ProjectUpdate,
+) {
+  const values: unknown[] = [id, ownerId];
+  const sets: string[] = [];
+  const set = (column: string, value: unknown) => {
+    values.push(value);
+    sets.push(`${column}=$${values.length}`);
+  };
+  if (input.name !== undefined) set("name", input.name);
+  if (input.branch !== undefined) set("branch", input.branch || null);
+  if (input.port !== undefined) set("port", input.port);
+  if (input.healthPath !== undefined)
+    set("health_path", input.healthPath || null);
+  if (input.env !== undefined || input.removeEnv !== undefined) {
+    // 지울 키를 먼저 빼고 새 값으로 덮는다. 적지 않은 키는 그대로 둔다
+    values.push(input.removeEnv ?? [], JSON.stringify(input.env ?? {}));
+    sets.push(
+      `env=(env - $${values.length - 1}::text[]) || $${values.length}::jsonb`,
+    );
+  }
   const result = await db.query(
-    "UPDATE projects SET name=$3 WHERE id=$1 AND owner_id=$2 RETURNING id",
-    [id, ownerId, name],
+    `UPDATE projects SET ${sets.join(", ")} WHERE id=$1 AND owner_id=$2 RETURNING id`,
+    values,
   );
   if (!result.rowCount)
     throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
@@ -214,7 +296,14 @@ export async function getProjectEntry(
   return {
     project: {
       ...result,
-      latestDeployment: { id: result.latestDeployment.id, status: "succeeded" },
+      latestDeployment: {
+        id: result.latestDeployment.id,
+        status: "succeeded",
+        url: result.latestDeployment.url,
+        message: result.latestDeployment.message,
+        stage: result.latestDeployment.stage,
+        logs: result.latestDeployment.logs,
+      },
     },
     destination,
   };

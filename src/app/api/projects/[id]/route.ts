@@ -23,7 +23,7 @@ export async function PATCH(request: Request, context: Context) {
       await updateProject(
         user.id,
         validate(idSchema, (await context.params).id),
-        input.name,
+        input,
       ),
     );
   } catch (error) {

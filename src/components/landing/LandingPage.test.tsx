@@ -9,10 +9,71 @@ const flower = vi.hoisted(() =>
 );
 vi.mock("@/components/flower/FlowerCanvas", () => ({ FlowerCanvas: flower }));
 
+const PROJECT = "1b62c0de-0000-4000-8000-000000000001";
+function project(status: string | null, extra: Record<string, unknown> = {}) {
+  return {
+    id: PROJECT,
+    repo: "o/next.js",
+    name: "next.js",
+    target: "cloud",
+    rootDir: "",
+    envKeys: [],
+    createdAt: "2026-10-01T00:00:00.000Z",
+    latestDeployment: status
+      ? { id: "d1", status, url: null, message: null, ...extra }
+      : null,
+  };
+}
+function respond(status: number, body: unknown) {
+  return Promise.resolve(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+}
+
 describe("배포 화면", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  let fetch: ReturnType<typeof vi.fn>;
+  /** GET /api/projects/{id} 가 차례로 돌려줄 상태 */
+  let states: ReturnType<typeof project>[];
+  /** 이미 등록한 프로젝트 (GET /api/projects) */
+  let registered: ReturnType<typeof project>[];
+  beforeEach(() => {
+    vi.useFakeTimers();
+    states = [];
+    registered = [];
+    fetch = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "/api/projects?limit=100")
+        return respond(200, { items: registered, nextCursor: null });
+      if (url === "/api/detect") return respond(200, { database: "postgres" });
+      if (url === `/api/projects/${PROJECT}/deployments`)
+        return respond(201, { id: "d2" });
+      if (url === "/api/projects" && init?.method === "POST")
+        return respond(201, project("queued"));
+      if (url === `/api/projects/${PROJECT}`)
+        return respond(200, states.shift() ?? project("running"));
+      return respond(404, { error: { code: "NOT_FOUND", message: "없음" } });
+    });
+    vi.stubGlobal("fetch", fetch);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
   const input = () => screen.getByRole("textbox", { name: "GitHub 레포 주소" });
+  function callTo(url: string, method?: string) {
+    const call = fetch.mock.calls.find(
+      ([value, init]) => value === url && (!method || init?.method === method),
+    );
+    if (!call) throw new Error(`${url} 요청이 없다`);
+    return call as [string, RequestInit & { body: string }];
+  }
+  /** DB 확인 창에서 생성을 누른다 */
+  async function create() {
+    await act(() => vi.runAllTimersAsync());
+    fireEvent.click(screen.getByRole("button", { name: "생성" }));
+  }
   function submit(repo = "o/next.js") {
     fireEvent.change(input(), { target: { value: repo } });
     fireEvent.click(screen.getByRole("button", { name: "배포 시작" }));
@@ -22,45 +83,125 @@ describe("배포 화면", () => {
     submit("bad");
     expect(screen.getByRole("alert")).toHaveTextContent("owner/repo 형식");
     expect(input()).toHaveFocus();
+    expect(fetch).not.toHaveBeenCalled();
     fireEvent.change(input(), { target: { value: "o/r" } });
     expect(screen.getByRole("alert")).not.toBeEmptyDOMElement();
     fireEvent.click(screen.getByRole("button", { name: "배포 시작" }));
     expect(screen.getByRole("alert")).toBeEmptyDOMElement();
   });
-  it("성공 후 재시작하면 입력을 유지하며 활성화하고 포커스를 돌린다", async () => {
+  it("레포와 배포 설정으로 실제 프로젝트를 등록하고 배포 주소를 보여 준다", async () => {
     const complete = vi.fn();
+    states = [
+      project("running"),
+      project("succeeded", { url: "https://next-js-1b62c0.apps.lilycloud.kr" }),
+    ];
     render(<LandingPage onComplete={complete} />);
+    fireEvent.change(screen.getByLabelText("앱 폴더"), {
+      target: { value: "frontend" },
+    });
+    fireEvent.change(screen.getByLabelText("환경변수"), {
+      target: { value: "VITE_API_URL=https://api.example.com" },
+    });
     submit();
     expect(input()).toBeDisabled();
-    expect(screen.getByRole("checkbox")).toBeEnabled();
     await act(() => vi.runAllTimersAsync());
+
+    // 감지한 DB 를 미리 골라 둔 확인 창. 다른 DB 로 바꿔 생성할 수 있다
+    const database = screen.getByRole("combobox", { name: "감지된 DB" });
+    expect(database).toHaveValue("postgres");
+    expect(JSON.parse(callTo("/api/detect")[1].body)).toEqual({
+      repo: "o/next.js",
+      rootDir: "frontend",
+    });
+    fireEvent.change(database, { target: { value: "mysql" } });
+    fireEvent.click(screen.getByRole("button", { name: "생성" }));
+    await act(() => vi.runAllTimersAsync());
+
+    expect(JSON.parse(callTo("/api/projects", "POST")[1].body)).toEqual({
+      repo: "o/next.js",
+      rootDir: "frontend",
+      env: { VITE_API_URL: "https://api.example.com" },
+      database: "mysql",
+    });
     expect(screen.getByText("배포 완료")).toBeInTheDocument();
-    expect(screen.getByRole("link")).toHaveTextContent("next-js.lily.app");
-    expect(complete).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link")).toHaveAttribute(
+      "href",
+      "https://next-js-1b62c0.apps.lilycloud.kr",
+    );
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "succeeded", projectId: PROJECT }),
+    );
     expect(flower.mock.lastCall?.[0]).toMatchObject({
       targets: { progress: 1, wilt: 0 },
     });
     fireEvent.click(screen.getByRole("button", { name: "다시 배포하기" }));
-    expect(flower.mock.lastCall?.[0]).toMatchObject({
-      targets: { progress: 0, wilt: 0 },
-    });
     expect(input()).toBeEnabled();
     expect(input()).toHaveFocus();
     expect(input()).toHaveValue("o/next.js");
-    expect(screen.queryByText("배포 완료")).not.toBeInTheDocument();
   });
-  it("시작 시 체크 상태로 롤백 여부를 고정한다", async () => {
+  it("배포가 실패하면 builder 가 남긴 이유를 보여 준다", async () => {
+    states = [
+      project("failed", { message: "kaniko build failed: npm ci exited 1" }),
+    ];
     render(<LandingPage />);
-    fireEvent.click(screen.getByRole("checkbox"));
     submit();
-    fireEvent.click(screen.getByRole("checkbox"));
+    await create();
     await act(() => vi.runAllTimersAsync());
-    expect(flower.mock.lastCall?.[0]).toMatchObject({
-      targets: { progress: (4 + 7 / 12) / 6, wilt: 0.85 },
+    expect(screen.getByText("배포하지 못했어요")).toBeInTheDocument();
+    expect(screen.getByText(/npm ci exited 1/)).toBeInTheDocument();
+    expect(flower.mock.lastCall?.[0]).toMatchObject({ targets: { wilt: 0.85 } });
+  });
+  it("로그인하지 않았으면 로그인으로 보낸다", async () => {
+    const login = vi.fn();
+    fetch.mockImplementation(() =>
+      respond(401, { error: { code: "UNAUTHORIZED", message: "로그인" } }),
+    );
+    render(<LandingPage onNeedLogin={login} />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(input()).toBeEnabled();
+  });
+  it("DB 확인 창에서 취소하면 등록하지 않는다", async () => {
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(input()).toBeEnabled();
+    expect(
+      fetch.mock.calls.some(([url, init]) => url === "/api/projects" && init?.method === "POST"),
+    ).toBe(false);
+  });
+  it("DB 를 감지하지 못하면 없음을 골라 둔다", async () => {
+    fetch.mockImplementation((url: string) =>
+      url === "/api/detect"
+        ? respond(200, { database: "none" })
+        : respond(200, { items: [], nextCursor: null }),
+    );
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    expect(screen.getByRole("combobox", { name: "감지된 DB" })).toHaveValue("none");
+  });
+  it("이미 등록한 프로젝트는 DB 를 묻지 않고 다시 배포한다", async () => {
+    registered = [project("succeeded")];
+    states = [project("succeeded")];
+    render(<LandingPage />);
+    submit();
+    await act(() => vi.runAllTimersAsync());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(callTo(`/api/projects/${PROJECT}/deployments`, "POST")).toBeTruthy();
+    expect(fetch.mock.calls.some(([url]) => url === "/api/detect")).toBe(false);
+  });
+  it("환경변수 형식이 틀리면 보내지 않고 알려 준다", () => {
+    render(<LandingPage />);
+    fireEvent.change(screen.getByLabelText("환경변수"), {
+      target: { value: "not a pair" },
     });
-    expect(screen.getByText("이전 버전으로 되돌렸어요")).toBeInTheDocument();
-    expect(screen.getByText(/서비스는 계속 정상이에요/)).toBeInTheDocument();
-    expect(input()).toBeDisabled();
+    submit();
+    expect(screen.getByRole("alert")).toHaveTextContent("1번째 줄");
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("언마운트 시 진행을 취소한다", async () => {
     const complete = vi.fn();
