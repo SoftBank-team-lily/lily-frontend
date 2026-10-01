@@ -26,6 +26,38 @@ export function ProjectItem({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const latest = project.latestDeployment;
+  const canRedeploy =
+    latest !== null && latest.status !== "queued" && latest.status !== "running";
+  async function redeploy() {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      // 새 배포 기록(queued)을 만들면 실행기가 다음 주기에 가져간다
+      await projectRequest(`/api/projects/${project.id}/deployments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: "{}",
+      });
+      onUpdate(
+        await projectRequest<Project>(`/api/projects/${project.id}`),
+      );
+    } catch (error) {
+      setError(
+        error instanceof ProjectError
+          ? error.message
+          : "서버에 연결하지 못했어요.",
+      );
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
   async function rename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (lock.current) return;
@@ -71,6 +103,12 @@ export function ProjectItem({
           ? statusLabels[project.latestDeployment.status]
           : "배포 기록 없음"}
       </p>
+      {latest?.message &&
+        (latest.status === "failed" || latest.status === "rolled-back") && (
+          <p className="mt-1 break-words text-caption text-mute">
+            {latest.message}
+          </p>
+        )}
       {editing ? (
         <form onSubmit={rename} className="mt-4 space-y-3" aria-busy={busy}>
           <AuthField
@@ -107,6 +145,16 @@ export function ProjectItem({
           >
             이름 수정
           </button>
+          {canRedeploy && (
+            <button
+              type="button"
+              onClick={redeploy}
+              disabled={busy}
+              className="text-mute hover:text-ink disabled:opacity-40"
+            >
+              {busy ? "요청 중…" : "다시 배포"}
+            </button>
+          )}
           {project.latestDeployment?.status === "succeeded" &&
             project.latestDeployment.url && (
               <a
