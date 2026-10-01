@@ -28,7 +28,9 @@ function inProgress(project: Project) {
   return (
     !project.latestDeployment ||
     project.latestDeployment.status === "queued" ||
-    project.latestDeployment.status === "running"
+    project.latestDeployment.status === "running" ||
+    // 다시 시작했거나 배포 직후 Pod 가 아직 뜨는 중
+    project.runtime?.state === "starting"
   );
 }
 
@@ -238,6 +240,12 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
                   items: previous.items.map((item) =>
                     item.id === value.id ? value : item,
                   ),
+                }))
+              }
+              onDelete={(id) =>
+                setPage((previous) => ({
+                  ...previous,
+                  items: previous.items.filter((item) => item.id !== id),
                 }))
               }
             />

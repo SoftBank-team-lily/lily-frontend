@@ -14,6 +14,8 @@ import type {
 } from "./types";
 import type { ProjectFix, ProjectUpdate } from "./schema";
 import { autoFixAttempt } from "@/lib/builder/run";
+import { appAction, clusterApps, runtimeOf } from "./apps";
+import type { AppRuntime } from "./types";
 
 type Row = {
   id: string;
@@ -35,17 +37,21 @@ type Row = {
   logs: string[] | null;
   diagnosis: Diagnosis | null;
   request_key: string | null;
+  app_name: string | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
 const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
   ARRAY(SELECT key FROM jsonb_each_text(p.env) WHERE value='unset' ORDER BY 1) AS unset_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
-  r.diagnosis, d.request_key
+  r.diagnosis, d.request_key,
+  (SELECT r2.app_name FROM builder_runs r2 JOIN deployments d2 ON d2.id=r2.deployment_id
+    WHERE d2.project_id=p.id AND r2.app_name<>'' ORDER BY r2.created_at DESC LIMIT 1) AS app_name
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status, request_key FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
   ) d ON true
   LEFT JOIN builder_runs r ON r.deployment_id=d.id`;
-function project(row: Row): Project {
+/** @param apps 클러스터 앱 상태. 넘기지 않으면 runtime 은 null (builder 를 부르지 않는다) */
+function project(row: Row, apps: Map<string, AppRuntime> | null = null): Project {
   return {
     id: row.id,
     repo: row.repo,
@@ -58,6 +64,7 @@ function project(row: Row): Project {
     envKeys: row.env_keys,
     unsetKeys: row.unset_keys ?? [],
     createdAt: row.created_at.toISOString(),
+    runtime: row.target === "cloud" ? runtimeOf(apps, row.app_name) : null,
     latestDeployment:
       row.deployment_id && row.status
         ? {
@@ -85,23 +92,80 @@ export async function listProjects(
     ORDER BY p.created_at DESC, p.id DESC LIMIT $3`,
     [ownerId, cursor, limit + 1],
   );
-  const items = result.rows.slice(0, limit).map(project);
+  const rows = result.rows.slice(0, limit);
+  const apps = rows.some((row) => row.target === "cloud" && row.app_name)
+    ? await clusterApps()
+    : null;
+  const items = rows.map((row) => project(row, apps));
   return {
     items,
     nextCursor: result.rows.length > limit ? items.at(-1)!.id : null,
   };
 }
-export async function getProject(
-  ownerId: string,
-  id: string,
-): Promise<Project> {
+async function projectRow(ownerId: string, id: string) {
   const result = await db.query<Row>(
     `${selectProject} WHERE p.id=$1 AND p.owner_id=$2`,
     [id, ownerId],
   );
   if (!result.rows[0])
     throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
-  return project(result.rows[0]);
+  return result.rows[0];
+}
+/** @param withRuntime true 면 클러스터 앱 상태도 채운다 (builder 를 부른다) */
+export async function getProject(
+  ownerId: string,
+  id: string,
+  withRuntime = false,
+): Promise<Project> {
+  const row = await projectRow(ownerId, id);
+  return project(
+    row,
+    withRuntime && row.target === "cloud" && row.app_name ? await clusterApps() : null,
+  );
+}
+/** 중지·시작·삭제 전에 본다. 배포가 진행 중이면 실행기가 곧 앱을 다시 만들거나 바꾼다 */
+function assertIdle(row: Row) {
+  if (row.status === "queued" || row.status === "running")
+    throw new ApiError(
+      409,
+      "DEPLOYING",
+      "배포가 진행 중이에요. 끝난 뒤에 다시 시도해 주세요.",
+    );
+}
+/**
+ * 클라우드 앱을 내린다(모든 슬롯 0) 또는 다시 띄운다. Service·Ingress·DB 는 남는다.
+ * 다시 배포해도 기본 레플리카로 뜬다.
+ */
+export async function setRunning(ownerId: string, id: string, running: boolean) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud")
+    throw new ApiError(
+      409,
+      "ONPREM",
+      "온프레미스 앱은 내 PC 에서 에이전트를 멈춰 주세요.",
+    );
+  assertIdle(row);
+  if (!row.app_name || !(await appAction(row.app_name, running ? "start" : "stop")))
+    throw new ApiError(
+      409,
+      "NOT_RUNNING",
+      "클러스터에 이 앱이 없어요. 다시 배포해 주세요.",
+    );
+  return getProject(ownerId, id, true);
+}
+/**
+ * 프로젝트를 지운다. 클라우드면 클러스터의 앱(Deployment·Service·Ingress·Secret)을 먼저 지우고,
+ * database 면 앱 DB 도 DROP 한다. 배포 기록은 프로젝트와 같이 지워진다 (ON DELETE CASCADE).
+ * 온프레미스는 플랫폼 기록만 지운다 (내 PC 의 앱은 에이전트를 멈추면 내려간다).
+ */
+export async function deleteProject(ownerId: string, id: string, database: boolean) {
+  const row = await projectRow(ownerId, id);
+  assertIdle(row);
+  let removed = false;
+  if (row.target === "cloud" && row.app_name)
+    removed = await appAction(row.app_name, "delete", database);
+  await db.query("DELETE FROM projects WHERE id=$1 AND owner_id=$2", [id, ownerId]);
+  return { id, removed };
 }
 /** 실행기가 실패를 자동으로 고쳐 다시 보낸 배포의 request_key 앞부분 */
 export const AUTO_FIX_KEY = "auto-fix-";

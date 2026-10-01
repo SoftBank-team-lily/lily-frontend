@@ -67,6 +67,12 @@ export type Diagnosis = {
   source: "rule" | "ai";
   autoFixable: boolean;
 };
+/**
+ * 클러스터에서 지금 앱 상태 (lily-builder /api/apps).
+ * running: 트래픽 받는 Pod 가 모두 Ready, starting: 덜 떴거나 죽어 있음, stopped: 0 으로 내려 둠, absent: 클러스터에 없음
+ */
+export type AppState = "running" | "starting" | "stopped" | "absent";
+export type AppRuntime = { state: AppState; ready: number; replicas: number };
 export type Project = {
   id: string;
   repo: string;
@@ -83,6 +89,8 @@ export type Project = {
   /** 값을 몰라 unset 으로 넣은 키. 넣으면 그 기능이 켜진다 */
   unsetKeys: string[];
   createdAt: string;
+  /** 클러스터 앱 상태. 온프레미스이거나, 아직 보낸 적 없거나, 확인하지 못했으면 null */
+  runtime: AppRuntime | null;
   /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {
     id: string;
