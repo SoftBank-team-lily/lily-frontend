@@ -136,7 +136,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
       );
     },
     async startBuild(repoUrl, appName, agentKey, settings) {
-      // 내 PC 는 builder 가 소켓으로 붙은 에이전트에 잡을 보낸다. 상태는 클라우드와 같은 /api/builds/{id}
+      // 온프레미스는 builder 가 소켓으로 붙은 에이전트에 잡을 보낸다. 상태는 클라우드와 같은 /api/builds/{id}
       const path = agentKey ? `/api/agents/${agentKey}/builds` : "/api/builds";
       const response = await fetch(`${builderUrl}${path}`, {
         method: "POST",

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api";
 import type { AgentIssued, AgentState } from "./types";
 
-// 내 PC(온프레미스 에이전트). 토큰 발급과 연결 상태는 lily-builder 가 맡는다 (/api/agents).
+// 온프레미스 에이전트. 토큰 발급과 연결 상태는 lily-builder 가 맡는다 (/api/agents).
 // 여기서는 사용자 ↔ 에이전트 key 만 보관한다. 토큰은 저장하지 않는다.
 
 function builderUrl() {

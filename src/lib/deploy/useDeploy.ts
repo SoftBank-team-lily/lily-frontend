@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import type { DeploySettings } from "@/lib/projects/types";
+import type { DeploySettings, DeployTarget } from "@/lib/projects/types";
 import { deployReducer, initialDeployState } from "./deployReducer";
 import { NeedLogin, realDeploy } from "./realDeploy";
 import type { DeployResult, RepoRef } from "./types";
@@ -30,13 +30,15 @@ export function useDeploy({ onComplete, onNeedLogin }: Options) {
     active.current = null;
     dispatch({ type: "reset" });
   }, []);
-  const start = useCallback((repo: RepoRef, settings: DeploySettings = {}) => {
+  const start = useCallback(
+    (repo: RepoRef, settings: DeploySettings = {}, target: DeployTarget = "cloud") => {
     if (active.current) return;
     const controller = new AbortController();
     active.current = controller;
     realDeploy({
       repo,
       settings,
+      target,
       signal: controller.signal,
       emit: (event) => {
         if (active.current !== controller) return;
@@ -54,6 +56,8 @@ export function useDeploy({ onComplete, onNeedLogin }: Options) {
       dispatch({ type: "reset" });
       if (error instanceof NeedLogin) callbacks.current.onNeedLogin?.();
     });
-  }, []);
+  },
+    [],
+  );
   return { state, start, reset };
 }

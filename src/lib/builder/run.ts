@@ -1,7 +1,7 @@
 // 배포 기록을 lily-builder 로 실행하는 한 주기. DB·HTTP 는 deps 로 받아 테스트에서 바꿔 끼운다.
 //
 // 프로젝트 등록           → 첫 배포(queued)
-// queued 배포            → builder POST /api/builds (내 PC 면 /api/agents/{key}/builds) → running
+// queued 배포            → builder POST /api/builds (온프레미스면 /api/agents/{key}/builds) → running
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
 // 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
 // builder FAILED·ROLLED_BACK·기록 없음 → failed
@@ -13,7 +13,7 @@ export type Pending = {
   projectId: string;
   repo: string;
   target: "cloud" | "onprem";
-  /** 내 PC 에이전트. onprem 인데 없으면 보내지 않고 failed */
+  /** 온프레미스 에이전트. onprem 인데 없으면 보내지 않고 failed */
   agentKey: string | null;
   settings?: DeploySettings;
 };
@@ -63,7 +63,7 @@ export type RunDeps = {
   /** 접속 주소나 실패 이유를 남긴다. builder 로 보내기 전 실패면 기록을 새로 만든다 */
   saveResult(deploymentId: string, result: RunResult): Promise<void>;
   /**
-   * @param agentKey 내 PC 에이전트. null 이면 클라우드
+   * @param agentKey 온프레미스 에이전트. null 이면 클라우드
    * @throws BuilderRejected 다시 보내도 같은 거절
    */
   startBuild(
@@ -136,7 +136,7 @@ export async function runOnce(deps: RunDeps) {
       continue;
     }
     if (pending.target === "onprem" && !pending.agentKey) {
-      await fail("내 PC가 연결되지 않았어요. '내 PC 연결'에서 에이전트를 실행해 주세요.");
+      await fail("온프레미스 에이전트가 연결되지 않았어요. '온프레미스 연결'에서 에이전트를 실행해 주세요.");
       continue;
     }
     try {

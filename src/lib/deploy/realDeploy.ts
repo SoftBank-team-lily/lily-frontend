@@ -1,5 +1,5 @@
 import { projectRequest, ProjectError } from "@/lib/projects/client";
-import type { DeploySettings, Project, ProjectPage } from "@/lib/projects/types";
+import type { DeploySettings, DeployTarget, Project, ProjectPage } from "@/lib/projects/types";
 import { toSlug } from "@/lib/repo/toSlug";
 import { STAGES } from "./stages";
 import { lastLine, stageIndex } from "./progress";
@@ -14,6 +14,8 @@ export const POLL_MS = 3000;
 type Options = {
   repo: RepoRef;
   settings: DeploySettings;
+  /** 배포 위치. 온프레미스는 연결된 에이전트가 띄운다 */
+  target?: DeployTarget;
   signal: AbortSignal;
   emit: (event: DeployEvent) => void;
   request?: typeof projectRequest;
@@ -27,6 +29,7 @@ type Options = {
 export async function realDeploy({
   repo,
   settings,
+  target = "cloud",
   signal,
   emit,
   request = projectRequest,
@@ -36,7 +39,7 @@ export async function realDeploy({
   emit({ type: "stage", index: 0 });
   let project: Project;
   try {
-    project = await register(repo, settings, signal, request);
+    project = await register(repo, settings, target, signal, request);
   } catch (error) {
     if (error instanceof ProjectError && error.status === 401) throw new NeedLogin();
     if (signal.aborted) return;
@@ -99,7 +102,7 @@ export async function realDeploy({
   }
 }
 
-/** 같은 레포·폴더로 등록한 클라우드 프로젝트. 없으면 null */
+/** 같은 레포·폴더로 등록한 프로젝트 (위치는 상관없이). 없으면 null */
 export async function findProject(
   repo: RepoRef,
   rootDir: string | undefined,
@@ -111,16 +114,28 @@ export async function findProject(
     page.items.find(
       (item) =>
         item.repo === repo.toLowerCase() &&
-        item.rootDir === (rootDir ?? "").replace(/^\/+|\/+$/g, "") &&
-        item.target === "cloud",
+        item.rootDir === (rootDir ?? "").replace(/^\/+|\/+$/g, ""),
     ) ?? null
   );
 }
 
-/** 같은 레포·폴더가 이미 등록돼 있으면 새로 만들지 않고 다시 배포한다 (DB 는 등록할 때 고른 그대로) */
+/** 이미 다른 위치에 등록한 레포. 레포·폴더는 계정에서 하나라 지우고 다시 등록해야 한다 */
+export function otherTarget(project: Project, target: DeployTarget): ProjectError | null {
+  if (project.target === target) return null;
+  return new ProjectError(
+    409,
+    "ALREADY_EXISTS",
+    `이 레포는 이미 ${targetLabels[project.target]}에 등록돼 있어요. 내 계정에서 지운 뒤 다시 배포해 주세요.`,
+  );
+}
+
+const targetLabels: Record<DeployTarget, string> = { cloud: "클라우드", onprem: "온프레미스" };
+
+/** 같은 레포·폴더가 같은 위치에 이미 등록돼 있으면 새로 만들지 않고 다시 배포한다 (DB 는 등록할 때 고른 그대로) */
 async function register(
   repo: RepoRef,
   settings: DeploySettings,
+  target: DeployTarget,
   signal: AbortSignal,
   request: typeof projectRequest,
 ): Promise<Project> {
@@ -130,8 +145,10 @@ async function register(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal,
-      body: JSON.stringify({ repo, ...settings }),
+      body: JSON.stringify({ repo, target, ...settings }),
     });
+  const conflict = otherTarget(existing, target);
+  if (conflict) throw conflict;
   await request(`/api/projects/${existing.id}/deployments`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },

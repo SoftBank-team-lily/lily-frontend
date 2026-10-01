@@ -1,7 +1,7 @@
 import { apiError, json, limitWrites, requireUser } from "@/lib/api";
 import { getAgent, issueAgent } from "@/lib/agents/server";
 
-// 내 PC 연결. GET: 연결 상태, POST: 에이전트 실행에 넣을 새 토큰 (응답에서 한 번만 보인다)
+// 온프레미스 연결. GET: 연결 상태, POST: 에이전트 실행에 넣을 새 토큰 (응답에서 한 번만 보인다)
 export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {

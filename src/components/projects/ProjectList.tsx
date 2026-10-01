@@ -200,7 +200,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
           </Button>
           {waitingAgent && (
             <p className="text-caption text-mute">
-              내 PC가 연결되면 등록할 수 있어요.
+              온프레미스 에이전트가 연결되면 등록할 수 있어요.
             </p>
           )}
         </fieldset>

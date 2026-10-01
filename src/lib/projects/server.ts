@@ -109,7 +109,7 @@ export async function createProject(
       throw new ApiError(
         409,
         "ONPREM_LIMIT",
-        `내 PC에는 프로젝트를 하나만 둘 수 있어요. 지금은 '${existing.rows[0].name}'이(가) 있어요.`,
+        `온프레미스에는 프로젝트를 하나만 둘 수 있어요. 지금은 '${existing.rows[0].name}'이(가) 있어요.`,
       );
   }
   const id = randomUUID();

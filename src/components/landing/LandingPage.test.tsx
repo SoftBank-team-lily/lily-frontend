@@ -119,6 +119,7 @@ describe("배포 화면", () => {
 
     expect(JSON.parse(callTo("/api/projects", "POST")[1].body)).toEqual({
       repo: "o/next.js",
+      target: "cloud",
       rootDir: "frontend",
       env: { VITE_API_URL: "https://api.example.com" },
       database: "mysql",
@@ -138,6 +139,73 @@ describe("배포 화면", () => {
     expect(input()).toBeEnabled();
     expect(input()).toHaveFocus();
     expect(input()).toHaveValue("o/next.js");
+  });
+  it("온프레미스는 에이전트가 연결된 뒤에만 배포하고 위치를 함께 보낸다", async () => {
+    let connected = false;
+    const base = fetch.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetch.mockImplementation((url: string, init?: RequestInit) =>
+      url === "/api/agent"
+        ? respond(200, {
+            agent: { agentId: "edge-1", connected, database: true },
+          })
+        : base(url, init),
+    );
+    states = [project("succeeded", { url: "https://app.lilycloud.kr" })];
+    render(<LandingPage />);
+    fireEvent.click(screen.getByLabelText(/온프레미스/));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole("button", { name: "배포 시작" })).toBeDisabled();
+    expect(
+      screen.getByText("온프레미스 에이전트가 연결되면 배포할 수 있어요."),
+    ).toBeInTheDocument();
+
+    connected = true;
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    expect(screen.getByText(/연결됨 · edge-1/)).toBeInTheDocument();
+    submit();
+    // 에이전트 상태를 계속 묻기 때문에 타이머를 모두 돌리지 않고 정해진 시간만 넘긴다
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    fireEvent.click(screen.getByRole("button", { name: "생성" }));
+    await act(() => vi.advanceTimersByTimeAsync(10000));
+    expect(JSON.parse(callTo("/api/projects", "POST")[1].body)).toMatchObject({
+      repo: "o/next.js",
+      target: "onprem",
+    });
+    expect(screen.getByText("배포 완료")).toBeInTheDocument();
+  });
+  it("다른 위치에 등록한 레포는 등록하지 않고 이유를 보인다", async () => {
+    registered = [project(null)];
+    fetch.mockImplementation((url: string) =>
+      url === "/api/agent"
+        ? respond(200, { agent: { agentId: "edge-1", connected: true, database: true } })
+        : url === "/api/projects?limit=100"
+          ? respond(200, { items: registered, nextCursor: null })
+          : respond(404, { error: { code: "NOT_FOUND", message: "없음" } }),
+    );
+    render(<LandingPage />);
+    fireEvent.click(screen.getByLabelText(/온프레미스/));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    submit();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByText(/이미 클라우드에 등록돼 있어요/)).toBeInTheDocument();
+    expect(fetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+  it("온프레미스를 고를 때 로그인하지 않았으면 로그인 버튼을 보인다", async () => {
+    const login = vi.fn();
+    fetch.mockImplementation(() =>
+      respond(401, { error: { code: "UNAUTHORIZED", message: "로그인" } }),
+    );
+    render(<LandingPage onNeedLogin={login} />);
+    fireEvent.click(screen.getByLabelText(/온프레미스/));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(
+      screen.getByText("로그인하면 에이전트를 연결할 수 있어요."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    expect(login).toHaveBeenCalledTimes(1);
   });
   it("배포가 실패하면 builder 가 남긴 이유를 보여 준다", async () => {
     states = [

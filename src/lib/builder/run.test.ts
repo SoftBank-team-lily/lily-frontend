@@ -195,7 +195,7 @@ describe("배포 실행기 한 주기", () => {
     expect(deps.events).toEqual([`${id} running`, `${id} succeeded`]);
   });
 
-  it("내 PC 프로젝트는 에이전트로 보내고 앱 이름을 31자 안으로 줄인다", async () => {
+  it("온프레미스 프로젝트는 에이전트로 보내고 앱 이름을 31자 안으로 줄인다", async () => {
     deps.queue(`a/${"long-repository-name-".repeat(3)}`, "onprem", "a1b2c3d4e5f6");
     await runOnce(deps);
     const [url, app, agent] = deps.started[0].split(" ");
@@ -205,12 +205,12 @@ describe("배포 실행기 한 주기", () => {
     expect(agent).toBe("@a1b2c3d4e5f6");
   });
 
-  it("내 PC 프로젝트인데 연결된 에이전트가 없으면 보내지 않고 failed", async () => {
+  it("온프레미스 프로젝트인데 연결된 에이전트가 없으면 보내지 않고 failed", async () => {
     const id = deps.queue("a/b", "onprem", null);
     await runOnce(deps);
     expect(deps.started).toEqual([]);
     expect(deps.events).toEqual([`${id} failed`]);
-    expect(deps.results.get(id)?.message).toContain("내 PC가 연결되지 않았어요");
+    expect(deps.results.get(id)?.message).toContain("온프레미스 에이전트가 연결되지 않았어요");
   });
 
   it("builder 가 실패하면 이유 한 줄을 남긴다", async () => {
@@ -219,7 +219,7 @@ describe("배포 실행기 한 주기", () => {
     deps.builderStatus.set("b1", {
       status: "FAILED",
       url: null,
-      message: "이 앱은 DB(postgres)가 필요한데 내 PC 에이전트에 DB 터널이 없다",
+      message: "이 앱은 DB(postgres)가 필요한데 온프레미스 에이전트에 DB 터널이 없다",
     });
     await runOnce(deps);
     expect(deps.events).toEqual([`${id} running`, `${id} failed`]);
