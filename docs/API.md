@@ -3,6 +3,9 @@
 API는 Next.js Node.js 서버에서 실행하며 계정·세션·프로젝트를 PostgreSQL에 저장합니다.
 개발 주소는 실행 포트에 따라 달라집니다. 현재 작업 환경은 `http://localhost:3210`입니다.
 
+이 문서는 현재 구현 계약입니다. 팀 피드백의 확장 필드·SMTP 없는 인증 정책은
+[DEPLOY.md의 T19~T29](./DEPLOY.md)에 계획했으며 아래 API에는 아직 적용하지 않았습니다.
+
 ## 1. 계정과 세션
 
 인증 경로는 `/api/auth`이며 Better Auth 서버 핸들러를 사용합니다.
