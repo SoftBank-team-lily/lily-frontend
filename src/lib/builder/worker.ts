@@ -1,7 +1,14 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { createDeployment, recordEvent } from "@/lib/projects/server";
-import { BuilderRejected, resultLine, runOnce, type RunDeps } from "./run";
+import type { DatabaseChoice } from "@/lib/projects/types";
+import {
+  BuilderRejected,
+  buildSettings,
+  resultLine,
+  runOnce,
+  type RunDeps,
+} from "./run";
 
 // 서버 프로세스 안에서 주기적으로 runOnce 를 돌린다. src/instrumentation.ts 가 BUILDER_URL 이 있을 때만 켠다.
 
@@ -58,8 +65,15 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         repo: string;
         target: "cloud" | "onprem";
         agent_key: string | null;
+        branch: string | null;
+        root_dir: string;
+        port: number | null;
+        health_path: string | null;
+        env: Record<string, string>;
+        database: DatabaseChoice | null;
       }>(
-        `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key FROM deployments d
+        `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
+          p.branch, p.root_dir, p.port, p.health_path, p.env, p.database FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -73,6 +87,14 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         repo: row.repo,
         target: row.target,
         agentKey: row.agent_key,
+        settings: {
+          branch: row.branch,
+          rootDir: row.root_dir,
+          port: row.port,
+          healthPath: row.health_path,
+          env: row.env,
+          database: row.database,
+        },
       }));
     },
     async active() {
@@ -113,13 +135,13 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         ],
       );
     },
-    async startBuild(repoUrl, appName, agentKey) {
+    async startBuild(repoUrl, appName, agentKey, settings) {
       // 내 PC 는 builder 가 소켓으로 붙은 에이전트에 잡을 보낸다. 상태는 클라우드와 같은 /api/builds/{id}
       const path = agentKey ? `/api/agents/${agentKey}/builds` : "/api/builds";
       const response = await fetch(`${builderUrl}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl, appName, database }),
+        body: JSON.stringify({ repoUrl, appName, database, ...buildSettings(settings) }),
         signal: AbortSignal.timeout(30_000),
       });
       if (response.status >= 400 && response.status < 500)
@@ -143,7 +165,14 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         status: build.status,
         url: build.url ?? null,
         message: resultLine(build.logs),
+        logs: build.logs ?? [],
       };
+    },
+    async saveProgress(deploymentId, stage, logs) {
+      await db.query(
+        "UPDATE builder_runs SET stage=$2, logs=$3::jsonb WHERE deployment_id=$1",
+        [deploymentId, stage, JSON.stringify(logs)],
+      );
     },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다

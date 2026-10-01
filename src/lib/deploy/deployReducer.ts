@@ -11,6 +11,7 @@ export function initialDeployState(): DeployState {
     progress: 0,
     wilt: 0,
     result: null,
+    log: null,
   };
 }
 
@@ -23,6 +24,8 @@ export function deployReducer(
       return initialDeployState();
     case "started":
       return { ...initialDeployState(), phase: "running", repo: event.repo };
+    case "log":
+      return { ...state, log: event.line };
     case "stage":
       return { ...state, index: event.index };
     case "progress":
@@ -38,6 +41,7 @@ export function deployReducer(
     case "succeeded":
       return { ...state, phase: event.type, result: event.result };
     case "rolled-back":
+    case "failed":
       return { ...state, phase: event.type, result: event.result, wilt: 0.85 };
   }
 }
