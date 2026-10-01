@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   allowed,
+  buildSettings,
   resultLine,
   type BuildState,
   type RunResult,
@@ -263,5 +264,77 @@ describe("이름과 상태", () => {
     expect(allowed("a/b", [])).toBe(true);
     expect(allowed("SoftBank-team-lily/x", ["softbank-team-lily"])).toBe(true);
     expect(allowed("evil/x", ["softbank-team-lily"])).toBe(false);
+  });
+});
+
+describe("배포 설정", () => {
+  it("폴더를 앱 이름에 붙여 한 레포의 백엔드·프론트가 겹치지 않는다", () => {
+    expect(appName("hyunsuhahaha/book-club", PROJECT, 40, "backend")).toBe(
+      "book-club-backend-1b62c0",
+    );
+    expect(appName("hyunsuhahaha/book-club", PROJECT, 40, "apps/web/")).toBe(
+      "book-club-web-1b62c0",
+    );
+  });
+
+  it("비어 있는 값은 builder 로 보내지 않는다", () => {
+    expect(buildSettings({ rootDir: "", env: {}, port: null })).toEqual({});
+    expect(
+      buildSettings({
+        branch: "dev",
+        rootDir: "backend",
+        port: 8080,
+        healthPath: "/api/health",
+        env: { JWT_SECRET: "x" },
+      }),
+    ).toEqual({
+      branch: "dev",
+      rootDir: "backend",
+      targetPort: 8080,
+      readinessPath: "/api/health",
+      livenessPath: "/api/health",
+      env: { JWT_SECRET: "x" },
+    });
+  });
+
+  it("등록할 때 정한 설정을 builder 로 넘긴다", async () => {
+    const deps = fake();
+    let sent: unknown;
+    deps.startBuild = async (_repo, _app, _agent, settings) => {
+      sent = settings;
+      return "b1";
+    };
+    deps.pending = async () => [
+      {
+        deploymentId: "d1",
+        projectId: PROJECT,
+        repo: "hyunsuhahaha/book-club",
+        target: "cloud",
+        agentKey: null,
+        settings: { rootDir: "frontend" },
+      },
+    ];
+    await runOnce(deps);
+    expect(sent).toEqual({ rootDir: "frontend" });
+  });
+});
+
+describe("진행 상황", () => {
+  it("진행 중인 builder 상태와 로그 끝부분을 남긴다", async () => {
+    const deps = fake();
+    const saved: [string, string, string[]][] = [];
+    deps.saveProgress = async (id, stage, logs) => {
+      saved.push([id, stage, logs]);
+    };
+    const id = deps.queue("o/app");
+    await runOnce(deps);
+    const logs = Array.from({ length: 50 }, (_, index) => `line ${index}`);
+    deps.builderStatus.set("b1", { status: "DEPLOYING", url: null, message: null, logs });
+    await runOnce(deps);
+    expect(saved).toHaveLength(1);
+    expect(saved[0][0]).toBe(id);
+    expect(saved[0][1]).toBe("DEPLOYING");
+    expect(saved[0][2]).toHaveLength(40);
+    expect(saved[0][2].at(-1)).toBe("line 49");
   });
 });

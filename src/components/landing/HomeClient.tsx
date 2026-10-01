@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@/lib/auth/types";
 import { authClient } from "@/lib/auth/client";
@@ -23,6 +23,9 @@ export function HomeClient({
   const { data, isPending } = authClient.useSession();
   const viewer = isPending ? user : (data?.user ?? null);
   const activeProject = viewer?.id === user?.id ? project : undefined;
+  // 이 화면에서 방금 배포를 마친 프로젝트. 꽃을 누르면 이 프로젝트의 대시보드로 간다
+  const [deployedId, setDeployedId] = useState<string | null>(null);
+  const targetId = activeProject?.id ?? deployedId;
   const next = activeProject ? `/?project=${activeProject.id}` : "/";
   const login = useCallback(
     () => router.replace(`/login?next=${encodeURIComponent(next)}`),
@@ -30,10 +33,8 @@ export function HomeClient({
   );
   const beforeEnter = useCallback(async (): Promise<EntryCheck> => {
     try {
-      if (activeProject) {
-        await projectRequest<ProjectEntry>(
-          `/api/projects/${activeProject.id}/entry`,
-        );
+      if (targetId) {
+        await projectRequest<ProjectEntry>(`/api/projects/${targetId}/entry`);
         return { allowed: true };
       }
       const session = await authClient.getSession();
@@ -48,8 +49,7 @@ export function HomeClient({
       }
       return {
         allowed: false,
-        message:
-          "이 결과는 배포 시연이에요. 내 계정에서 실제 배포가 완료된 프로젝트를 선택해 주세요.",
+        message: "배포가 완료된 프로젝트를 내 계정에서 선택해 주세요.",
       };
     } catch (error) {
       if (error instanceof ProjectError && error.status === 401) {
@@ -64,12 +64,12 @@ export function HomeClient({
             : "프로젝트를 확인하지 못했어요.",
       };
     }
-  }, [activeProject, login]);
+  }, [targetId, login]);
   const enterDashboard = useCallback(async () => {
-    if (!activeProject) return;
+    if (!targetId) return;
     try {
       const entry = await projectRequest<ProjectEntry>(
-        `/api/projects/${activeProject.id}/entry`,
+        `/api/projects/${targetId}/entry`,
       );
       if (!entry.destination) throw new Error("대시보드 미연결");
       window.location.assign(entry.destination);
@@ -77,15 +77,20 @@ export function HomeClient({
       if (error instanceof ProjectError && error.status === 401) login();
       else throw error;
     }
-  }, [activeProject, login]);
+  }, [targetId, login]);
   return (
     <LandingPage
       key={`${viewer?.id ?? "guest"}:${activeProject?.id ?? "demo"}`}
       navigation={<AuthNav user={user} />}
       project={activeProject}
       beforeEnter={beforeEnter}
+      onComplete={(result) => {
+        if (result.outcome === "succeeded" && result.projectId)
+          setDeployedId(result.projectId);
+      }}
+      onNeedLogin={login}
       onEnterDashboard={
-        activeProject && dashboardConnected ? enterDashboard : undefined
+        targetId && dashboardConnected ? enterDashboard : undefined
       }
       onResetProject={() => router.replace("/account")}
     />

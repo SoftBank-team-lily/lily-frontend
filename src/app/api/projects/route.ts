@@ -30,7 +30,13 @@ export async function POST(request: Request) {
     await limitWrites(user.id, "projects");
     const input = validate(projectSchema, await readJson(request));
     return json(
-      await createProject(user.id, input.repo, input.name, input.target),
+      await createProject(user.id, input.repo, input.name, input.target, {
+        branch: input.branch,
+        rootDir: input.rootDir,
+        port: input.port,
+        healthPath: input.healthPath,
+        env: input.env,
+      }),
       201,
     );
   } catch (error) {

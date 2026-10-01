@@ -10,6 +10,7 @@ import type { DashboardHandler, EntryCheck } from "@/lib/dashboard/types";
 import type { ReadyProject } from "@/lib/projects/types";
 import { toDeployState } from "@/lib/projects/toDeployState";
 import { parseRepo } from "@/lib/repo/parseRepo";
+import { readSettings } from "@/lib/projects/settingsForm";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
 import { DeployStatus } from "@/components/deploy/DeployStatus";
@@ -22,6 +23,7 @@ import type { ReactNode } from "react";
 
 export function LandingPage({
   onComplete,
+  onNeedLogin,
   onEnterDashboard,
   navigation,
   project,
@@ -29,6 +31,8 @@ export function LandingPage({
   onResetProject,
 }: {
   onComplete?: (result: DeployResult) => void;
+  /** 로그인하지 않고 배포를 시작했을 때 */
+  onNeedLogin?: () => void;
   onEnterDashboard?: DashboardHandler;
   navigation?: ReactNode;
   project?: ReadyProject;
@@ -36,17 +40,19 @@ export function LandingPage({
   onResetProject?: () => void;
 }) {
   const [repo, setRepo] = useState(project?.repo ?? "");
-  const [fail, setFail] = useState(false);
   const [error, setError] = useState("");
   const nav = useRef<HTMLElement>(null);
   const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const reducedMotion = usePrefersReducedMotion();
   const [flowerAvailable, setFlowerAvailable] = useState(false);
-  const deploy = useDeploy({ reducedMotion, onComplete });
+  const deploy = useDeploy({ onComplete, onNeedLogin });
   const state = project ? toDeployState(project) : deploy.state;
   const { start, reset } = deploy;
-  const finished = state.phase === "succeeded" || state.phase === "rolled-back";
+  const finished =
+    state.phase === "succeeded" ||
+    state.phase === "rolled-back" ||
+    state.phase === "failed";
   const dashboardReady =
     state.phase === "succeeded" && state.result?.outcome === "succeeded";
   const entry = useDashboardEntry({
@@ -106,9 +112,16 @@ export function LandingPage({
       input.current?.focus();
       return;
     }
+    let settings;
+    try {
+      settings = readSettings(new FormData(event.currentTarget));
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : REPO_ERROR);
+      return;
+    }
     setError("");
     entry.clearMessage();
-    start(parsed, fail);
+    start(parsed, settings);
   }
   function restart() {
     if (entry.busy) return;
@@ -125,6 +138,8 @@ export function LandingPage({
       ? "배포 완료"
       : state.phase === "rolled-back"
         ? "이전 버전으로 되돌렸어요"
+        : state.phase === "failed"
+          ? "배포하지 못했어요"
         : state.phase === "threshold-exceeded"
           ? "에러율 기준 초과"
           : STAGES[state.index].name;
@@ -161,7 +176,7 @@ export function LandingPage({
               <p className="text-lead text-mute">
                 {project
                   ? `${project.name}의 배포가 완료됐어요. 꽃을 눌러 대시보드를 열어 보세요.`
-                  : "배포가 진행될수록 꽃에 색이 번져요. 이 화면은 시연용이라 실제 배포는 일어나지 않아요."}
+                  : "GitHub 레포 주소만 넣으면 빌드부터 배포까지 해요. 배포가 진행될수록 꽃에 색이 번져요."}
               </p>
             </div>
             {project ? (
@@ -171,12 +186,10 @@ export function LandingPage({
             ) : (
               <DeployForm
                 repo={repo}
-                fail={fail}
                 error={error}
                 disabled={disabled || entry.busy}
                 inputRef={input}
                 onRepoChange={setRepo}
-                onFailChange={setFail}
                 onSubmit={submit}
               />
             )}
@@ -208,18 +221,37 @@ export function LandingPage({
                     <b className="font-semibold text-ink">
                       {state.result.repo}
                     </b>
-                    가 피었어요. 주소는{" "}
-                    <a
-                      href="#"
-                      className="text-ink underline"
-                      onClick={(event) => event.preventDefault()}
-                    >
-                      {state.result.slug}.lily.app
-                    </a>
-                    이고, 모니터링 화면에서 상태를 계속 볼 수 있어요.
+                    가 피었어요.{" "}
+                    {state.result.url ? (
+                      <>
+                        주소는{" "}
+                        <a
+                          href={state.result.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all text-ink underline"
+                        >
+                          {state.result.url.replace(/^https?:\/\//, "")}
+                        </a>
+                        이고,{" "}
+                      </>
+                    ) : null}
+                    모니터링 화면에서 상태를 계속 볼 수 있어요.
                   </>
                 )}
-                {state.result?.outcome === "rolled-back" && ROLLBACK_MESSAGE}
+                {!finished && state.log && (
+                  <span className="block break-all font-mono text-caption text-mute">
+                    {state.log}
+                  </span>
+                )}
+                {state.result?.outcome === "rolled-back" &&
+                  (state.result.message ?? ROLLBACK_MESSAGE)}
+                {state.result?.outcome === "failed" && (
+                  <>
+                    {state.result.message ?? "배포 서버가 이유를 남기지 않았어요."}{" "}
+                    내 계정에서 설정을 고친 뒤 다시 배포할 수 있어요.
+                  </>
+                )}
               </DeployStatus>
             )}
           </Reveal>

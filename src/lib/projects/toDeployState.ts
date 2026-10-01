@@ -12,6 +12,7 @@ export function toDeployState(project: ReadyProject): DeployState {
     failedIndex: null,
     progress: 1,
     wilt: 0,
+    log: null,
     result: {
       repo: project.repo,
       slug: toSlug(project.repo),

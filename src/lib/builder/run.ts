@@ -15,13 +15,18 @@ export type Pending = {
   target: "cloud" | "onprem";
   /** 내 PC 에이전트. onprem 인데 없으면 보내지 않고 failed */
   agentKey: string | null;
+  settings?: DeploySettings;
 };
 /** message: builder 마지막 로그에서 뽑은 결과 한 줄 (실패 이유) */
 export type BuildState = {
   status: string;
   url: string | null;
   message: string | null;
+  /** builder 로그 끝부분. 화면이 진행 단계와 로그를 보여 준다 */
+  logs?: string[];
 };
+/** 화면에 남기는 로그 줄 수 */
+export const PROGRESS_LINES = 40;
 export type RunResult = {
   appName?: string;
   url?: string | null;
@@ -35,6 +40,15 @@ export type Active = {
 export type FinalStatus = "succeeded" | "failed";
 
 export class BuilderRejected extends Error {}
+
+/** 등록할 때 정한 배포 설정. 비어 있는 값은 builder 가 레포를 보고 정한다 */
+export type DeploySettings = {
+  branch?: string | null;
+  rootDir?: string | null;
+  port?: number | null;
+  healthPath?: string | null;
+  env?: Record<string, string>;
+};
 
 export type RunDeps = {
   /** 배포 기록이 없는 프로젝트에 첫 배포를 만든다 */
@@ -54,9 +68,12 @@ export type RunDeps = {
     repoUrl: string,
     appName: string,
     agentKey: string | null,
+    settings?: DeploySettings,
   ): Promise<string>;
   /** builder 에 기록이 없으면 null */
   buildStatus(buildId: string): Promise<BuildState | null>;
+  /** 진행 중인 builder 상태와 로그 끝부분을 남긴다 */
+  saveProgress?(deploymentId: string, stage: string, logs: string[]): Promise<void>;
   event(
     deploymentId: string,
     status: "running" | FinalStatus,
@@ -75,6 +92,12 @@ export async function runOnce(deps: RunDeps) {
   for (const active of await deps.active()) {
     try {
       const state = await deps.buildStatus(active.buildId);
+      if (state)
+        await deps.saveProgress?.(
+          active.deploymentId,
+          state.status,
+          (state.logs ?? []).slice(-PROGRESS_LINES),
+        );
       const result = finalStatus(state?.status ?? null);
       // queued 에서 바로 succeeded 로는 바꿀 수 없다. running 을 먼저 기록한다
       if (active.status === "queued")
@@ -102,6 +125,7 @@ export async function runOnce(deps: RunDeps) {
       pending.repo,
       pending.projectId,
       pending.target === "onprem" ? 24 : 40,
+      pending.settings?.rootDir,
     );
     const fail = (reason: string) =>
       safeFail(deps, pending.deploymentId, app, reason, log);
@@ -118,6 +142,7 @@ export async function runOnce(deps: RunDeps) {
         `https://github.com/${pending.repo}`,
         app,
         pending.target === "onprem" ? pending.agentKey : null,
+        pending.settings,
       );
       await deps.saveRun(pending.deploymentId, buildId, app);
       log(`배포 ${pending.deploymentId} → 빌드 ${buildId} (${app})`);
@@ -143,12 +168,17 @@ export function finalStatus(builderStatus: string | null): FinalStatus | null {
 }
 
 /**
- * 레포 이름 + 프로젝트 id 앞 6자리. 같은 레포를 여러 사람이 등록해도 겹치지 않는다.
+ * 레포 이름(+ 폴더 이름) + 프로젝트 id 앞 6자리. 같은 레포를 여러 사람이 등록해도 겹치지 않는다.
  * k8s Service 이름이 되므로 영문 소문자로 시작한다.
  */
-export function appName(repo: string, projectId: string, maxName = 40) {
-  let name = repo
-    .slice(repo.indexOf("/") + 1)
+export function appName(
+  repo: string,
+  projectId: string,
+  maxName = 40,
+  rootDir?: string | null,
+) {
+  const folder = rootDir?.split("/").filter(Boolean).at(-1);
+  let name = `${repo.slice(repo.indexOf("/") + 1)}${folder ? `-${folder}` : ""}`
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -194,4 +224,19 @@ export function resultLine(logs: string[] | undefined): string | null {
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 프로젝트 배포 설정 → lily-builder BuildRequest 필드. 비어 있는 값은 보내지 않아 builder 가 정하게 둔다 */
+export function buildSettings(settings: DeploySettings | undefined) {
+  if (!settings) return {};
+  const env = settings.env && Object.keys(settings.env).length ? settings.env : undefined;
+  return {
+    ...(settings.branch ? { branch: settings.branch } : {}),
+    ...(settings.rootDir ? { rootDir: settings.rootDir } : {}),
+    ...(settings.port ? { targetPort: settings.port } : {}),
+    ...(settings.healthPath
+      ? { readinessPath: settings.healthPath, livenessPath: settings.healthPath }
+      : {}),
+    ...(env ? { env } : {}),
+  };
 }

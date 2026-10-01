@@ -1,0 +1,149 @@
+import { projectRequest, ProjectError } from "@/lib/projects/client";
+import type { DeploySettings, Project, ProjectPage } from "@/lib/projects/types";
+import { toSlug } from "@/lib/repo/toSlug";
+import { STAGES } from "./stages";
+import { lastLine, stageIndex } from "./progress";
+import type { DeployEvent, RepoRef } from "./types";
+
+/** 로그인하지 않아 등록하지 못했다. 화면이 로그인으로 보낸다 */
+export class NeedLogin extends Error {}
+
+/** 진행 중 상태를 다시 읽는 주기 */
+export const POLL_MS = 3000;
+
+type Options = {
+  repo: RepoRef;
+  settings: DeploySettings;
+  signal: AbortSignal;
+  emit: (event: DeployEvent) => void;
+  request?: typeof projectRequest;
+  wait?: (ms: number, signal: AbortSignal) => Promise<void>;
+};
+
+/**
+ * 레포를 프로젝트로 등록하고(이미 있으면 다시 배포) 실제 배포가 끝날 때까지 상태를 따라간다.
+ * @throws NeedLogin 로그인하지 않았을 때
+ */
+export async function realDeploy({
+  repo,
+  settings,
+  signal,
+  emit,
+  request = projectRequest,
+  wait = sleep,
+}: Options) {
+  emit({ type: "started", repo });
+  emit({ type: "stage", index: 0 });
+  let project: Project;
+  try {
+    project = await register(repo, settings, signal, request);
+  } catch (error) {
+    if (error instanceof ProjectError && error.status === 401) throw new NeedLogin();
+    if (signal.aborted) return;
+    emit({
+      type: "failed",
+      result: {
+        repo,
+        slug: toSlug(repo),
+        outcome: "failed",
+        message: error instanceof ProjectError ? error.message : "서버에 연결하지 못했어요.",
+      },
+    });
+    return;
+  }
+
+  let shown = 0;
+  for (;;) {
+    signal.throwIfAborted();
+    const status = project.latestDeployment?.status ?? "queued";
+    if (status === "succeeded" || status === "failed" || status === "rolled-back") {
+      const result = {
+        repo,
+        slug: toSlug(repo),
+        projectId: project.id,
+        url: project.latestDeployment?.url ?? null,
+        message: project.latestDeployment?.message ?? null,
+      };
+      if (status === "succeeded") {
+        STAGES.forEach((_, index) => emit({ type: "progress", index, fraction: 1 }));
+        emit({ type: "stage", index: STAGES.length - 1 });
+        emit({ type: "succeeded", result: { ...result, outcome: "succeeded" } });
+      } else {
+        emit({ type: "threshold-exceeded" });
+        emit({
+          type: status === "rolled-back" ? "rolled-back" : "failed",
+          result: { ...result, outcome: status === "rolled-back" ? "rolled-back" : "failed" },
+        });
+      }
+      return;
+    }
+    // builder 가 남긴 실제 단계와 로그 (실행기가 몇 초마다 옮겨 둔다)
+    const logs = project.latestDeployment?.logs ?? [];
+    // 앞 단계로 돌아가 보이지 않게 한다
+    const index = Math.max(shown, stageIndex(project.latestDeployment?.stage ?? null, logs));
+    for (let stage = shown; stage < index; stage++)
+      emit({ type: "progress", index: stage, fraction: 1 });
+    emit({ type: "stage", index });
+    emit({ type: "progress", index, fraction: 0.5 });
+    emit({ type: "log", line: lastLine(logs) });
+    shown = Math.max(shown, index);
+
+    await wait(POLL_MS, signal);
+    try {
+      project = await request<Project>(`/api/projects/${project.id}`, { signal });
+    } catch (error) {
+      if (signal.aborted) return;
+      if (error instanceof ProjectError && error.status === 401) throw new NeedLogin();
+      // 잠깐 끊긴 것. 다음 주기에 다시 읽는다
+    }
+  }
+}
+
+/** 같은 레포·폴더가 이미 등록돼 있으면 새로 만들지 않고 다시 배포한다 */
+async function register(
+  repo: RepoRef,
+  settings: DeploySettings,
+  signal: AbortSignal,
+  request: typeof projectRequest,
+): Promise<Project> {
+  try {
+    return await request<Project>("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({ repo, ...settings }),
+    });
+  } catch (error) {
+    if (!(error instanceof ProjectError) || error.status !== 409) throw error;
+  }
+  const page = await request<ProjectPage>("/api/projects?limit=100", { signal });
+  const existing = page.items.find(
+    (item) =>
+      item.repo === repo.toLowerCase() &&
+      item.rootDir === (settings.rootDir ?? "").replace(/^\/+|\/+$/g, "") &&
+      item.target === "cloud",
+  );
+  if (!existing) throw new ProjectError(409, "ALREADY_EXISTS", "이미 등록된 프로젝트예요. 내 계정에서 다시 배포해 주세요.");
+  await request(`/api/projects/${existing.id}/deployments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    signal,
+    body: "{}",
+  });
+  return request<Project>(`/api/projects/${existing.id}`, { signal });
+}
+
+function sleep(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    signal.throwIfAborted();
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", abort, { once: true });
+  });
+}
