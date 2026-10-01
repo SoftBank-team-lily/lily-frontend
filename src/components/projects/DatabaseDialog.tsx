@@ -54,7 +54,12 @@ export function DatabaseDialog({
             className="rounded-xl border border-line bg-field px-4 py-3 text-input text-ink outline-none focus-visible:border-ink"
           >
             {OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
+              // 펼친 목록은 OS 가 밝은 배경으로 그려서 상속된 밝은 글씨가 안 보인다
+              <option
+                key={option.value}
+                value={option.value}
+                className="bg-ink text-surface"
+              >
                 {option.label}
               </option>
             ))}
