@@ -20,9 +20,10 @@ type Row = {
   deployment_id: string | null;
   status: DeploymentStatus | null;
   url: string | null;
+  message: string | null;
 };
-// url: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.created_at, d.id AS deployment_id, d.status, r.url
+// url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.created_at, d.id AS deployment_id, d.status, r.url, r.message
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
   ) d ON true
@@ -36,7 +37,12 @@ function project(row: Row): Project {
     createdAt: row.created_at.toISOString(),
     latestDeployment:
       row.deployment_id && row.status
-        ? { id: row.deployment_id, status: row.status, url: row.url }
+        ? {
+            id: row.deployment_id,
+            status: row.status,
+            url: row.url,
+            message: row.message,
+          }
         : null,
   };
 }
@@ -238,6 +244,7 @@ export async function getProjectEntry(
         id: result.latestDeployment.id,
         status: "succeeded",
         url: result.latestDeployment.url,
+        message: result.latestDeployment.message,
       },
     },
     destination,

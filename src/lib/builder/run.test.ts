@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   allowed,
+  resultLine,
   type BuildState,
+  type RunResult,
   appName,
   BuilderRejected,
   finalStatus,
@@ -20,7 +22,7 @@ type Fake = RunDeps & {
   status: Map<string, string>;
   builds: Map<string, string>;
   builderStatus: Map<string, BuildState | null>;
-  urls: Map<string, string>;
+  results: Map<string, RunResult>;
   started: string[];
   events: string[];
   reject: boolean;
@@ -38,7 +40,7 @@ function fake(): Fake {
     status: new Map(),
     builds: new Map(),
     builderStatus: new Map(),
-    urls: new Map(),
+    results: new Map(),
     started: [],
     events: [],
     reject: false,
@@ -73,8 +75,11 @@ function fake(): Fake {
     async saveRun(deploymentId, buildId) {
       deps.builds.set(deploymentId, buildId);
     },
-    async saveUrl(deploymentId, url) {
-      deps.urls.set(deploymentId, url);
+    async saveResult(deploymentId, result) {
+      deps.results.set(deploymentId, {
+        ...deps.results.get(deploymentId),
+        ...result,
+      });
     },
     async startBuild(repoUrl, app, agentKey) {
       if (deps.reject) throw new BuilderRejected("400 bad repo");
@@ -85,7 +90,7 @@ function fake(): Fake {
     async buildStatus(buildId) {
       return deps.builderStatus.has(buildId)
         ? deps.builderStatus.get(buildId)!
-        : { status: "BUILDING", url: null };
+        : { status: "BUILDING", url: null, message: null };
     },
     async event(deploymentId, status) {
       if (deps.failEvent) {
@@ -118,8 +123,12 @@ describe("배포 실행기 한 주기", () => {
     const ok = deps.queue("a/ok");
     const bad = deps.queue("a/bad");
     await runOnce(deps);
-    deps.builderStatus.set("b1", { status: "SUCCEEDED", url: null });
-    deps.builderStatus.set("b2", { status: "ROLLED_BACK", url: null });
+    deps.builderStatus.set("b1", { status: "SUCCEEDED", url: null, message: null });
+    deps.builderStatus.set("b2", {
+      status: "ROLLED_BACK",
+      url: null,
+      message: "canary 판정 실패",
+    });
     await runOnce(deps);
     expect(deps.events).toEqual([
       `${ok} running`,
@@ -134,7 +143,7 @@ describe("배포 실행기 한 주기", () => {
     deps.failEvent = true;
     await runOnce(deps);
     expect(deps.status.get(id)).toBe("queued");
-    deps.builderStatus.set("b1", { status: "SUCCEEDED", url: null });
+    deps.builderStatus.set("b1", { status: "SUCCEEDED", url: null, message: null });
     await runOnce(deps);
     expect(deps.events).toEqual([`${id} running`, `${id} succeeded`]);
   });
@@ -178,9 +187,10 @@ describe("배포 실행기 한 주기", () => {
     deps.builderStatus.set("b1", {
       status: "SUCCEEDED",
       url: "https://b-1b62c0.apps.lilycloud.kr",
+      message: null,
     });
     await runOnce(deps);
-    expect(deps.urls.get(id)).toBe("https://b-1b62c0.apps.lilycloud.kr");
+    expect(deps.results.get(id)?.url).toBe("https://b-1b62c0.apps.lilycloud.kr");
     expect(deps.events).toEqual([`${id} running`, `${id} succeeded`]);
   });
 
@@ -199,6 +209,20 @@ describe("배포 실행기 한 주기", () => {
     await runOnce(deps);
     expect(deps.started).toEqual([]);
     expect(deps.events).toEqual([`${id} failed`]);
+    expect(deps.results.get(id)?.message).toContain("내 PC가 연결되지 않았어요");
+  });
+
+  it("builder 가 실패하면 이유 한 줄을 남긴다", async () => {
+    const id = deps.queue("a/b");
+    await runOnce(deps);
+    deps.builderStatus.set("b1", {
+      status: "FAILED",
+      url: null,
+      message: "이 앱은 DB(postgres)가 필요한데 내 PC 에이전트에 DB 터널이 없다",
+    });
+    await runOnce(deps);
+    expect(deps.events).toEqual([`${id} running`, `${id} failed`]);
+    expect(deps.results.get(id)?.message).toContain("DB 터널이 없다");
   });
 
   it("허용되지 않은 소유자의 레포는 보내지 않고 failed", async () => {
@@ -217,6 +241,16 @@ describe("이름과 상태", () => {
     expect(appName("owner/123app", PROJECT)).toBe("app-123app-1b62c0");
     expect(appName("owner/---", PROJECT)).toBe("app-1b62c0");
     expect(appName(`owner/${"x".repeat(100)}`, PROJECT)).toHaveLength(47);
+  });
+  it("builder 로그 마지막 줄에서 결과 한 줄을 뽑는다", () => {
+    expect(
+      resultLine(["queued", "agent: FAILED failed: health failed, traffic unchanged"]),
+    ).toBe("health failed, traffic unchanged");
+    expect(resultLine(["failed: 에이전트가 연결돼 있지 않다"])).toBe(
+      "에이전트가 연결돼 있지 않다",
+    );
+    expect(resultLine(["done: https://x"])).toBe("https://x");
+    expect(resultLine([])).toBeNull();
   });
   it("builder 상태를 최종 상태로 바꾼다", () => {
     expect(finalStatus("SUCCEEDED")).toBe("succeeded");

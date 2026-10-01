@@ -3,6 +3,7 @@
 // 프로젝트 등록           → 첫 배포(queued)
 // queued 배포            → builder POST /api/builds (내 PC 면 /api/agents/{key}/builds) → running
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
+// 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
 // builder FAILED·ROLLED_BACK·기록 없음 → failed
 //
 // 상태는 recordEvent 로만 바꾼다 (전환 규칙을 그대로 따른다).
@@ -15,7 +16,17 @@ export type Pending = {
   /** 내 PC 에이전트. onprem 인데 없으면 보내지 않고 failed */
   agentKey: string | null;
 };
-export type BuildState = { status: string; url: string | null };
+/** message: builder 마지막 로그에서 뽑은 결과 한 줄 (실패 이유) */
+export type BuildState = {
+  status: string;
+  url: string | null;
+  message: string | null;
+};
+export type RunResult = {
+  appName?: string;
+  url?: string | null;
+  message?: string | null;
+};
 export type Active = {
   deploymentId: string;
   status: "queued" | "running";
@@ -33,7 +44,8 @@ export type RunDeps = {
   /** builder 로 보냈고 끝나지 않은 배포 */
   active(): Promise<Active[]>;
   saveRun(deploymentId: string, buildId: string, appName: string): Promise<void>;
-  saveUrl(deploymentId: string, url: string): Promise<void>;
+  /** 접속 주소나 실패 이유를 남긴다. builder 로 보내기 전 실패면 기록을 새로 만든다 */
+  saveResult(deploymentId: string, result: RunResult): Promise<void>;
   /**
    * @param agentKey 내 PC 에이전트. null 이면 클라우드
    * @throws BuilderRejected 다시 보내도 같은 거절
@@ -68,7 +80,11 @@ export async function runOnce(deps: RunDeps) {
       if (active.status === "queued")
         await deps.event(active.deploymentId, "running");
       if (result === "succeeded" && state?.url)
-        await deps.saveUrl(active.deploymentId, state.url);
+        await deps.saveResult(active.deploymentId, { url: state.url });
+      if (result === "failed")
+        await deps.saveResult(active.deploymentId, {
+          message: state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
+        });
       if (result) {
         await deps.event(active.deploymentId, result);
         log(`배포 ${active.deploymentId}: ${result} (빌드 ${active.buildId})`);
@@ -81,22 +97,22 @@ export async function runOnce(deps: RunDeps) {
   const slots = deps.maxActive - (await deps.active()).length;
   if (slots <= 0) return;
   for (const pending of await deps.pending(slots)) {
-    if (!allowed(pending.repo, deps.allowedOwners)) {
-      log(`배포 ${pending.deploymentId}: 허용되지 않은 레포 ${pending.repo}`);
-      await safeEvent(deps, pending.deploymentId, "failed", log);
-      continue;
-    }
-    if (pending.target === "onprem" && !pending.agentKey) {
-      log(`배포 ${pending.deploymentId}: 내 PC 가 연결되지 않았습니다`);
-      await safeEvent(deps, pending.deploymentId, "failed", log);
-      continue;
-    }
     // 에이전트의 앱 이름은 31자까지다 (lily-on-premise)
     const app = appName(
       pending.repo,
       pending.projectId,
       pending.target === "onprem" ? 24 : 40,
     );
+    const fail = (reason: string) =>
+      safeFail(deps, pending.deploymentId, app, reason, log);
+    if (!allowed(pending.repo, deps.allowedOwners)) {
+      await fail(`이 레포 소유자는 배포할 수 없어요 (${pending.repo}).`);
+      continue;
+    }
+    if (pending.target === "onprem" && !pending.agentKey) {
+      await fail("내 PC가 연결되지 않았어요. '내 PC 연결'에서 에이전트를 실행해 주세요.");
+      continue;
+    }
     try {
       const buildId = await deps.startBuild(
         `https://github.com/${pending.repo}`,
@@ -108,8 +124,7 @@ export async function runOnce(deps: RunDeps) {
       await deps.event(pending.deploymentId, "running");
     } catch (error) {
       if (error instanceof BuilderRejected) {
-        log(`배포 ${pending.deploymentId}: builder 거절 ${error.message}`);
-        await safeEvent(deps, pending.deploymentId, "failed", log);
+        await fail(`배포 서버가 요청을 거절했어요: ${error.message}`);
       } else {
         // builder 나 DB 가 잠깐 안 될 때. 다음 주기에 다시 보낸다
         log(`배포 ${pending.deploymentId} 시작 실패: ${message(error)}`);
@@ -148,17 +163,33 @@ export function allowed(repo: string, owners: string[]) {
   return owners.some((value) => value.toLowerCase() === owner);
 }
 
-async function safeEvent(
+/** builder 로 보내기 전에 끝난 배포: 이유를 남기고 failed */
+async function safeFail(
   deps: RunDeps,
   deploymentId: string,
-  status: FinalStatus,
+  app: string,
+  reason: string,
   log: (message: string) => void,
 ) {
+  log(`배포 ${deploymentId}: ${reason}`);
   try {
-    await deps.event(deploymentId, status);
+    await deps.saveResult(deploymentId, { appName: app, message: reason });
+    await deps.event(deploymentId, "failed");
   } catch (error) {
-    log(`배포 ${deploymentId} ${status} 기록 실패: ${message(error)}`);
+    log(`배포 ${deploymentId} failed 기록 실패: ${message(error)}`);
   }
+}
+
+/**
+ * builder 로그 마지막 줄 → 사람이 읽을 결과 한 줄.
+ * 예: "agent: FAILED failed: health failed, ..." → "health failed, ..."
+ */
+export function resultLine(logs: string[] | undefined): string | null {
+  const last = logs?.at(-1)?.trim();
+  if (!last) return null;
+  return last
+    .replace(/^agent: (FAILED|SUCCEEDED)\s*/, "")
+    .replace(/^(failed|rolled back|done):\s*/, "");
 }
 
 function message(error: unknown) {

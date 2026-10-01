@@ -12,11 +12,12 @@ export type Project = {
   name: string;
   target: DeployTarget;
   createdAt: string;
-  /** url: 배포가 끝나 앱에 접속할 수 있는 주소 */
+  /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {
     id: string;
     status: DeploymentStatus;
     url: string | null;
+    message: string | null;
   } | null;
 };
 export type Deployment = {
@@ -28,7 +29,12 @@ export type Deployment = {
 };
 export type ProjectPage = { items: Project[]; nextCursor: string | null };
 export type ReadyProject = Omit<Project, "latestDeployment"> & {
-  latestDeployment: { id: string; status: "succeeded"; url: string | null };
+  latestDeployment: {
+    id: string;
+    status: "succeeded";
+    url: string | null;
+    message: string | null;
+  };
 };
 export type ProjectEntry = {
   project: ReadyProject;

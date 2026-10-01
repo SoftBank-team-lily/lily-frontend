@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { createDeployment, recordEvent } from "@/lib/projects/server";
-import { BuilderRejected, runOnce, type RunDeps } from "./run";
+import { BuilderRejected, resultLine, runOnce, type RunDeps } from "./run";
 
 // 서버 프로세스 안에서 주기적으로 runOnce 를 돌린다. src/instrumentation.ts 가 BUILDER_URL 이 있을 때만 켠다.
 
@@ -83,7 +83,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
       }>(
         `SELECT d.id, d.status, r.build_id FROM builder_runs r
         JOIN deployments d ON d.id=r.deployment_id
-        WHERE d.status IN ('queued','running') ORDER BY r.created_at`,
+        WHERE d.status IN ('queued','running') AND r.build_id IS NOT NULL ORDER BY r.created_at`,
       );
       return result.rows.map((row) => ({
         deploymentId: row.id,
@@ -97,11 +97,21 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         [deploymentId, buildId, appName],
       );
     },
-    async saveUrl(deploymentId, url) {
-      await db.query("UPDATE builder_runs SET url=$2 WHERE deployment_id=$1", [
-        deploymentId,
-        url,
-      ]);
+    async saveResult(deploymentId, result) {
+      // builder 로 보내기 전 실패면 기록이 없어서 새로 만든다 (build_id 없이)
+      await db.query(
+        `INSERT INTO builder_runs(deployment_id, build_id, app_name, url, message)
+        VALUES ($1, NULL, $2, $3, $4)
+        ON CONFLICT (deployment_id) DO UPDATE SET
+          url=COALESCE(EXCLUDED.url, builder_runs.url),
+          message=COALESCE(EXCLUDED.message, builder_runs.message)`,
+        [
+          deploymentId,
+          result.appName ?? "",
+          result.url ?? null,
+          result.message ?? null,
+        ],
+      );
     },
     async startBuild(repoUrl, appName, agentKey) {
       // 내 PC 는 builder 가 소켓으로 붙은 에이전트에 잡을 보낸다. 상태는 클라우드와 같은 /api/builds/{id}
@@ -127,8 +137,13 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
       const build = (await response.json()) as {
         status: string;
         url: string | null;
+        logs?: string[];
       };
-      return { status: build.status, url: build.url ?? null };
+      return {
+        status: build.status,
+        url: build.url ?? null,
+        message: resultLine(build.logs),
+      };
     },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다
