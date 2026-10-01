@@ -6,10 +6,18 @@ import type { AgentIssued, AgentState } from "@/lib/agents/types";
 import { Button } from "@/components/ui/Button";
 
 // 온프레미스 연결: 토큰을 받아 에이전트를 실행하면, 연결될 때까지 상태를 다시 묻는다.
-const REPO = "https://github.com/SoftBank-team-lily/lily-on-premise";
+// 공개 이미지라 레포 클론·빌드가 없다. 공개 주소(플랫폼 존)와 DB 터널 인증서는 lily-builder 가 토큰으로 준다.
+// PowerShell·bash 에서 그대로 실행된다 (//var/run 은 Git Bash 의 경로 변환을 피한다). 앞의 rm 은 이전 에이전트를 바꾼다
+const IMAGE = "public.ecr.aws/x3w9c9r7/lily-agent";
+const CONTROL_PLANE = "wss://builder.apps.lilycloud.kr/api/agents/connect";
 
 function command(token: string) {
-  return `git clone ${REPO} && cd lily-on-premise\nLILY_AGENT_TOKEN=${token} ./scripts/agent.sh`;
+  return (
+    "docker rm -f lily-agent; " +
+    "docker run -d --name lily-agent --restart unless-stopped --network host " +
+    "-v //var/run/docker.sock:/var/run/docker.sock " +
+    `-e CONTROL_PLANE_URL="${CONTROL_PLANE}?token=${token}" ${IMAGE}`
+  );
 }
 
 export function AgentPanel({
@@ -126,7 +134,8 @@ export function AgentPanel({
       ) : token ? (
         <div className="mt-4 space-y-3">
           <p className="text-caption text-mute">
-            Docker가 켜진 PC의 터미널에서 실행하세요. 토큰은 지금만 보여요.
+            Docker가 켜진 PC의 터미널(PowerShell, 터미널 앱)에 붙여 넣으세요.
+            토큰은 지금만 보여요.
           </p>
           <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl bg-field p-4 text-caption text-ink">
             {command(token)}
