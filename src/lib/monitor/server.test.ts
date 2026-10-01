@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/agents/server", () => ({ getAgent: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { query: vi.fn() } }));
 vi.mock("@/lib/projects/server", () => ({ getProject: vi.fn() }));
 import { db } from "@/lib/db";
@@ -7,7 +8,7 @@ import { getProject } from "@/lib/projects/server";
 import { getMonitor, readResource, redact } from "./server";
 import { databasesSchema, metricsSchema } from "./schema";
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 describe("프로젝트 관측 경계", () => {
   it("소유권 확인에 실패하면 DB 매핑과 내부 API를 조회하지 않는다", async () => {
     vi.mocked(getProject).mockRejectedValueOnce(new Error("NOT_FOUND"));
@@ -33,4 +34,34 @@ describe("프로젝트 관측 경계", () => {
     expect(result).not.toContain("long-private-value"); expect(result).not.toContain("abc.xyz");
     expect(result).not.toContain(":pass@"); expect(result).not.toContain("hidden");
   });
+});
+
+
+it("실제 API 필드를 매핑하며 일부 실패와 다른 앱 데이터를 분리한다", async () => {
+  vi.mocked(getProject).mockResolvedValueOnce({ id: "project", name: "sample", target: "cloud", repo: "team/repo", rootDir: "backend", latestDeployment: null } as Awaited<ReturnType<typeof getProject>>);
+  vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ app_name: "owned-app", env: { JWT_SECRET: "private-secret" }, database_url: null }] } as never);
+  vi.stubEnv("OBSERVABILITY_URL", "http://observer");
+  vi.stubEnv("INGRESS_API_URL", "http://ingress");
+  vi.stubEnv("PROVISIONER_URL", "http://provisioner");
+  const current = { requestsPerMinute: 20, errorRate: 0.025, avgLatencyMs: 10, p95LatencyMs: 30 };
+  const app = { app: "owned-app", namespace: "default", url: null, strategy: "blue-green", activeSlot: "green", readyReplicas: 1, replicas: 1, image: "app:v1", deployments: [] };
+  const fetch = vi.fn(async (input: URL) => {
+    const url = new URL(input);
+    if (url.hostname === "ingress") return new Response("private upstream error", { status: 500 });
+    if (url.hostname === "provisioner") return Response.json([{ id: "db", engine: "POSTGRES", status: "READY", password: "hidden" }]);
+    if (url.pathname.endsWith("/metrics")) return Response.json({ app: "owned-app", namespace: "default", current, series: [{ at: "2026-10-02T00:00:00Z", ...current }] });
+    if (url.pathname.endsWith("/status")) return Response.json({ app: "owned-app", namespace: "default", level: "WARNING", message: "주의", reason: "오류 증가", action: "주의 알림", judgedAt: "2026-10-02T00:00:00Z" });
+    if (url.pathname.endsWith("/pods")) return Response.json([]);
+    if (url.pathname.endsWith("/logs")) return Response.json([{ at: "2026-10-02T00:00:00Z", pod: null, slot: null, image: null, message: "value private-secret" }]);
+    return Response.json([{ ...app, app: "other-app" }, app]);
+  });
+  vi.stubGlobal("fetch", fetch);
+  const result = await getMonitor("owner", "project", { window: "15m", level: "error" });
+  expect(result.metrics).toMatchObject({ state: "ready", data: { current: { errorRate: 0.025 } } });
+  expect(result.route.state).toBe("unavailable");
+  expect(result.app).toMatchObject({ state: "ready", data: { app: "owned-app" } });
+  expect(JSON.stringify(result)).not.toContain("other-app");
+  expect(JSON.stringify(result)).not.toContain("private-secret");
+  expect(JSON.stringify(result)).not.toContain("hidden");
+  expect(fetch.mock.calls.some(([url]) => url.searchParams.get("level") === "error" && url.searchParams.get("since") === "15m")).toBe(true);
 });

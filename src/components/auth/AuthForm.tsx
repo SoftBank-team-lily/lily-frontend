@@ -52,8 +52,12 @@ export function AuthForm({
       }
       if (signup) setSent(true);
       else {
-        router.replace(next);
-        router.refresh();
+        if (next === "/dashboard" || next.startsWith("/dashboard?")) {
+          window.location.assign(next);
+        } else {
+          router.replace(next);
+          router.refresh();
+        }
       }
     } catch {
       setError("서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");

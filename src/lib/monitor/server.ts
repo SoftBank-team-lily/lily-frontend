@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { getAgent } from "@/lib/agents/server";
 import { db } from "@/lib/db";
 import { getProject } from "@/lib/projects/server";
 import {
@@ -61,7 +62,21 @@ export async function getMonitor(ownerId: string, id: string, query: MonitorQuer
     project.latestDeployment.logs = project.latestDeployment.logs.map(clean);
     if (project.latestDeployment.message) project.latestDeployment.message = clean(project.latestDeployment.message);
   }
-  const common = { project, appName, namespace, window: query.window, generatedAt: new Date().toISOString() };
+  const agent = project.target === "onprem"
+    ? await getAgent(ownerId).then((data) => ({ state: "ready" as const, data }))
+      .catch(() => missing("unavailable", "에이전트 연결 상태를 확인하지 못했어요."))
+    : missing("unsupported", "클라우드 앱은 PC 에이전트를 사용하지 않아요.");
+  // 배포 진단의 수정 제안 값은 이 화면에 필요 없으므로 보내지 않는다.
+  const latest = project.latestDeployment;
+  const summary = {
+    id: project.id, name: project.name, repo: project.repo, rootDir: project.rootDir,
+    target: project.target, databaseLocation: project.databaseLocation,
+    latestDeployment: latest ? {
+      id: latest.id, status: latest.status, stage: latest.stage, url: latest.url,
+      message: latest.message, logs: latest.logs,
+    } : null,
+  };
+  const common = { project: summary, agent, appName, namespace, window: query.window, generatedAt: new Date().toISOString() };
   const unavailable = project.target === "onprem"
     ? missing("unsupported", "온프레미스 앱의 실시간 관측은 아직 지원하지 않아요.")
     : !appName ? missing("pending", "첫 배포가 실행되면 관측 데이터가 연결돼요.") : null;

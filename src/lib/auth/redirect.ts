@@ -9,7 +9,8 @@ export function safeReturnPath(value: unknown): string {
     const url = new URL(value, "https://lily.local");
     if (url.origin !== "https://lily.local") return "/";
     if (url.pathname === "/account") return "/account";
-    if (url.pathname !== "/") return "/";
+    if (!["/", "/dashboard"].includes(url.pathname)) return "/";
+    const base = url.pathname;
     const project = url.searchParams.get("project");
     if (
       project &&
@@ -17,8 +18,9 @@ export function safeReturnPath(value: unknown): string {
         project,
       )
     ) {
-      return `/?project=${encodeURIComponent(project)}`;
+      return `${base}?project=${encodeURIComponent(project)}`;
     }
+    if (base === "/dashboard" && !project) return "/dashboard";
   } catch {
     /* 유효하지 않은 주소는 랜딩으로 복귀합니다. */
   }
