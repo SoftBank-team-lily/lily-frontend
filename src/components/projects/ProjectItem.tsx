@@ -8,7 +8,7 @@ import { AuthField } from "@/components/auth/AuthField";
 import { Button } from "@/components/ui/Button";
 import { readUpdate } from "@/lib/projects/settingsForm";
 
-const targetLabels = { cloud: "클라우드", onprem: "내 PC" } as const;
+const targetLabels = { cloud: "클라우드", onprem: "온프레미스" } as const;
 const statusLabels: Record<DeploymentStatus, string> = {
   queued: "배포 대기",
   running: "배포 중",

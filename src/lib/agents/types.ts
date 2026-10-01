@@ -1,4 +1,4 @@
-/** 내 PC 에이전트 연결 상태. 에이전트를 만든 적이 없으면 null */
+/** 온프레미스 에이전트 연결 상태. 에이전트를 만든 적이 없으면 null */
 export type AgentState = {
   connected: boolean;
   /** 에이전트가 알려 준 이름 (PC 호스트 이름) */

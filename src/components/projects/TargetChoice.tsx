@@ -9,8 +9,8 @@ const options: { value: DeployTarget; label: string; description: string }[] =
     },
     {
       value: "onprem",
-      label: "내 PC",
-      description: "내 PC의 에이전트가 띄우고 공개 주소를 받아요.",
+      label: "온프레미스",
+      description: "직접 운영하는 서버(PC)의 에이전트가 띄우고 공개 주소를 받아요.",
     },
   ];
 

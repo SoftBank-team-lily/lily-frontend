@@ -12,8 +12,9 @@ import { toDeployState } from "@/lib/projects/toDeployState";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { readSettings } from "@/lib/projects/settingsForm";
 import { detectDatabase, ProjectError } from "@/lib/projects/client";
-import { findProject } from "@/lib/deploy/realDeploy";
-import type { DatabaseChoice, DeploySettings } from "@/lib/projects/types";
+import { findProject, otherTarget } from "@/lib/deploy/realDeploy";
+import type { DatabaseChoice, DeploySettings, DeployTarget } from "@/lib/projects/types";
+import type { AgentState } from "@/lib/agents/types";
 import { DatabaseDialog } from "@/components/projects/DatabaseDialog";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
@@ -53,6 +54,9 @@ export function LandingPage({
     settings: DeploySettings;
     detected: DatabaseChoice;
   } | null>(null);
+  const [target, setTarget] = useState<DeployTarget>("cloud");
+  const [agent, setAgent] = useState<AgentState>(null);
+  const waitingAgent = target === "onprem" && !agent?.connected;
   const nav = useRef<HTMLElement>(null);
   const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -117,7 +121,7 @@ export function LandingPage({
   );
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || checking || entry.busy) return;
+    if (disabled || checking || entry.busy || waitingAgent) return;
     const parsed = parseRepo(repo);
     if (!parsed) {
       setError(REPO_ERROR);
@@ -136,8 +140,11 @@ export function LandingPage({
     // 이미 등록한 프로젝트는 등록할 때 고른 DB 로 다시 배포한다. 새 프로젝트만 DB 를 묻는다
     setChecking(true);
     try {
-      if (await findProject(parsed, settings.rootDir)) {
-        start(parsed, settings);
+      const existing = await findProject(parsed, settings.rootDir);
+      if (existing) {
+        const conflict = otherTarget(existing, target);
+        if (conflict) throw conflict;
+        start(parsed, settings, target);
         return;
       }
       const detected = await detectDatabase(parsed, settings);
@@ -222,6 +229,11 @@ export function LandingPage({
                 inputRef={input}
                 onRepoChange={setRepo}
                 onSubmit={submit}
+                target={target}
+                onTargetChange={setTarget}
+                onAgentChange={setAgent}
+                onNeedLogin={onNeedLogin}
+                waitingAgent={waitingAgent}
               />
             )}
             {choice && (
@@ -233,7 +245,7 @@ export function LandingPage({
                 }}
                 onCreate={(database) => {
                   setChoice(null);
-                  start(choice.repo, { ...choice.settings, database });
+                  start(choice.repo, { ...choice.settings, database }, target);
                 }}
               />
             )}

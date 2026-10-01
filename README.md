@@ -55,12 +55,12 @@ pnpm test:e2e
 
 꽃은 별도 번들로 로드됩니다. React는 목표값만 전달하고 프레임 계산은 `FlowerScene`이 수행합니다. WebGL 초기화가 불가능해도 배포 폼은 사용할 수 있습니다.
 
-## 실제 배포 (클라우드 / 내 PC)
+## 실제 배포 (클라우드 / 온프레미스)
 
 `/account` 에서 레포를 등록하면 서버 안의 실행기(`src/lib/builder`, `src/instrumentation.ts`)가 lily-builder 로 배포한다. `BUILDER_URL` 이 없으면 실행기는 꺼진다.
 
-- **배포 위치**: 클라우드는 Lily 클러스터, 내 PC 는 사용자 PC 의 에이전트(lily-on-premise)
-- **내 PC 연결**: "연결 토큰 받기" → 화면의 명령(`scripts/agent.sh`)을 PC 에서 실행 → "연결됨" 이 보이면 등록할 수 있다. 내 PC 프로젝트는 계정당 하나
+- **배포 위치**: 클라우드는 Lily 클러스터, 온프레미스는 사용자 PC 의 에이전트(lily-on-premise)
+- **온프레미스 연결**: "연결 토큰 받기" → 화면의 명령(`scripts/agent.sh`)을 PC 에서 실행 → "연결됨" 이 보이면 등록할 수 있다. 온프레미스 프로젝트는 계정당 하나
 - **상태**: 목록이 배포 중에는 4초마다 다시 읽는다. 완료되면 "앱 열기", 실패하면 이유 한 줄과 "다시 배포"
 - **DB 확인**: 등록할 때 lily-builder 가 감지한 DB(`POST /api/detect`)를 "감지된 DB" 드롭다운에 골라 두고, 사용자가 바꾼 뒤 생성한다. 감지하지 못하면 "없음". 등록한 뒤에는 바꿀 수 없다 (`projects.database`)
 - 포트·헬스 경로는 lily-builder 가 레포를 보고 정한다. DB 를 고르기 전에 등록한 프로젝트는 `BUILDER_DATABASE=auto`

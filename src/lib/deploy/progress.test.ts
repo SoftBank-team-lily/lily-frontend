@@ -19,6 +19,18 @@ describe("배포 진행 단계", () => {
     expect(stageIndex("DEPLOYING", logs)).toBe(5);
   });
 
+  it("온프레미스는 에이전트 상태를 따른다", () => {
+    const logs = ["agent: BUILDING docker build"];
+    expect(stageIndex("BUILDING", logs)).toBe(1);
+    logs.push("agent: STARTING green :18081");
+    expect(stageIndex("DEPLOYING", logs)).toBe(3);
+    logs.push("agent: HEALTH http://127.0.0.1:18081/");
+    expect(stageIndex("DEPLOYING", logs)).toBe(4);
+    logs.push("agent: SWITCHING proxy -> green");
+    expect(stageIndex("DEPLOYING", logs)).toBe(5);
+    expect(lastLine(logs)).toBe("proxy -> green");
+  });
+
   it("마지막 로그 한 줄에서 분류를 뗀다", () => {
     expect(lastLine(["a", "progress: ready step3: deployment ready"])).toBe(
       "step3: deployment ready",
