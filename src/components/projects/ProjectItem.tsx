@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
-import { projectRequest, ProjectError } from "@/lib/projects/client";
+import { fixProject, projectRequest, ProjectError } from "@/lib/projects/client";
+import { FixPanel } from "./FixPanel";
 import type { Project, DeploymentStatus } from "@/lib/projects/types";
 import { AuthField } from "@/components/auth/AuthField";
 import { Button } from "@/components/ui/Button";
@@ -108,12 +109,22 @@ export function ProjectItem({
           ? statusLabels[project.latestDeployment.status]
           : "배포 기록 없음"}
       </p>
-      {latest?.message &&
+      {latest?.autoFixed && (
+        <p className="mt-1 text-caption text-mute">이전 실패를 자동으로 고쳐 다시 배포한 기록이에요.</p>
+      )}
+      {latest?.status === "failed" && latest.diagnosis ? (
+        <FixPanel
+          diagnosis={latest.diagnosis}
+          onApply={async (input) => onUpdate(await fixProject(project.id, input, true))}
+        />
+      ) : (
+        latest?.message &&
         (latest.status === "failed" || latest.status === "rolled-back") && (
           <p className="mt-1 break-words text-caption text-mute">
             {latest.message}
           </p>
-        )}
+        )
+      )}
       {latest && latest.logs.length > 0 && (
         <details className="mt-2 text-caption">
           <summary className="cursor-pointer text-mute hover:text-ink">

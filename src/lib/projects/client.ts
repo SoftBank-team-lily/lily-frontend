@@ -1,6 +1,6 @@
 "use client";
 
-import type { DatabaseChoice } from "./types";
+import type { DatabaseChoice, Detection, Project } from "./types";
 
 export class ProjectError extends Error {
   constructor(
@@ -30,17 +30,19 @@ export async function projectRequest<T>(
   return data as T;
 }
 
+const NO_DETECTION: Detection = { database: "none", dir: null, apps: [], config: [], problem: null };
+
 /**
- * 등록 전 DB 감지. 감지하지 못했으면 none.
- * @throws ProjectError 입력·로그인 문제(4xx). 서버 쪽 실패는 none 으로 본다
+ * 등록 전 감지: DB, 앱 폴더 후보, 기동에 필요한 설정 키. 감지하지 못했으면 DB 없음과 빈 목록.
+ * @throws ProjectError 입력·로그인 문제(4xx). 서버 쪽 실패는 감지 못 함으로 본다
  */
-export async function detectDatabase(
+export async function detectRepo(
   repo: string,
   settings: { branch?: string; rootDir?: string },
   signal?: AbortSignal,
-): Promise<DatabaseChoice> {
+): Promise<Detection> {
   try {
-    const result = await projectRequest<{ database: DatabaseChoice }>("/api/detect", {
+    const result = await projectRequest<{ detection?: Detection; database: DatabaseChoice }>("/api/detect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal,
@@ -50,10 +52,30 @@ export async function detectDatabase(
         ...(settings.rootDir ? { rootDir: settings.rootDir } : {}),
       }),
     });
-    return result.database;
+    return result.detection ?? { ...NO_DETECTION, database: result.database };
   } catch (error) {
     if (signal?.aborted) throw error;
     if (error instanceof ProjectError && error.status < 500) throw error;
-    return "none";
+    return NO_DETECTION;
   }
+}
+
+/** 배포 전 확인 창·실패 고치기에서 고른 값 */
+export type FixInput = {
+  env?: Record<string, string>;
+  generateEnv?: string[];
+  reuseEnv?: string[];
+  port?: number;
+  healthPath?: string;
+  database?: DatabaseChoice;
+  rootDir?: string;
+};
+
+/** 실패한 배포를 고친다. redeploy 면 바로 다시 배포한다 */
+export function fixProject(id: string, input: FixInput, redeploy: boolean) {
+  return projectRequest<Project>(`/api/projects/${id}/fix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, redeploy }),
+  });
 }

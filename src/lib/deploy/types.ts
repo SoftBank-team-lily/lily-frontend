@@ -1,3 +1,5 @@
+import type { Diagnosis } from "@/lib/projects/types";
+
 export type RepoRef = string;
 export type DeployResult = {
   repo: RepoRef;
@@ -7,6 +9,8 @@ export type DeployResult = {
   projectId?: string;
   url?: string | null;
   message?: string | null;
+  /** 실패했을 때 원인과 고칠 방법 */
+  diagnosis?: Diagnosis | null;
 };
 export type FlowerTargets = { progress: number; wilt: number };
 export type DeployEvent =

@@ -11,11 +11,12 @@ import type { ReadyProject } from "@/lib/projects/types";
 import { toDeployState } from "@/lib/projects/toDeployState";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { readSettings } from "@/lib/projects/settingsForm";
-import { detectDatabase, ProjectError } from "@/lib/projects/client";
+import { detectRepo, fixProject, ProjectError, type FixInput } from "@/lib/projects/client";
 import { findProject, otherTarget } from "@/lib/deploy/realDeploy";
-import type { DatabaseChoice, DeploySettings, DeployTarget } from "@/lib/projects/types";
+import type { Detection, DeploySettings, DeployTarget, Project } from "@/lib/projects/types";
 import type { AgentState } from "@/lib/agents/types";
-import { DatabaseDialog } from "@/components/projects/DatabaseDialog";
+import { DeployCheckDialog, type DeployChoice } from "@/components/projects/DeployCheckDialog";
+import { FixPanel } from "@/components/projects/FixPanel";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
 import { DeployStatus } from "@/components/deploy/DeployStatus";
@@ -48,12 +49,18 @@ export function LandingPage({
   const [error, setError] = useState("");
   /** 기존 프로젝트·DB 를 확인하는 중 */
   const [checking, setChecking] = useState(false);
-  /** DB 확인을 기다리는 새 프로젝트. 생성을 누르면 고른 DB 로 등록하고 배포한다 */
+  /**
+   * 배포 전 확인을 기다리는 레포. 새 프로젝트면 고른 값으로 등록하고,
+   * 실패했던 프로젝트(existing)면 고친 값을 저장한 뒤 다시 배포한다
+   */
   const [choice, setChoice] = useState<{
     repo: string;
     settings: DeploySettings;
-    detected: DatabaseChoice;
+    detection: Detection;
+    existing: Project | null;
   } | null>(null);
+  /** 마지막으로 시작한 배포. 실패를 고친 뒤 같은 값으로 다시 시작한다 */
+  const last = useRef<{ repo: string; settings: DeploySettings; target: DeployTarget } | null>(null);
   const [target, setTarget] = useState<DeployTarget>("cloud");
   const [agent, setAgent] = useState<AgentState>(null);
   const waitingAgent = target === "onprem" && !agent?.connected;
@@ -137,18 +144,20 @@ export function LandingPage({
     }
     setError("");
     entry.clearMessage();
-    // 이미 등록한 프로젝트는 등록할 때 고른 DB 로 다시 배포한다. 새 프로젝트만 DB 를 묻는다
+    // 이미 잘 배포된 프로젝트는 바로 다시 배포한다. 새 프로젝트와 실패했던 프로젝트는 배포 전 확인을 거친다
     setChecking(true);
     try {
       const existing = await findProject(parsed, settings.rootDir);
       if (existing) {
         const conflict = otherTarget(existing, target);
         if (conflict) throw conflict;
-        start(parsed, settings, target);
-        return;
+        if (existing.latestDeployment?.status !== "failed") {
+          launch(parsed, settings);
+          return;
+        }
       }
-      const detected = await detectDatabase(parsed, settings);
-      setChoice({ repo: parsed, settings, detected });
+      const detection = await detectRepo(parsed, settings);
+      setChoice({ repo: parsed, settings, detection, existing });
     } catch (problem) {
       if (problem instanceof ProjectError && problem.status === 401) onNeedLogin?.();
       else
@@ -160,6 +169,57 @@ export function LandingPage({
     } finally {
       setChecking(false);
     }
+  }
+  function launch(repoRef: string, settings: DeploySettings) {
+    last.current = { repo: repoRef, settings, target };
+    start(repoRef, settings, target);
+  }
+  /** 확인 창에서 고른 값으로 등록(새 프로젝트)하거나 고친 뒤(실패했던 프로젝트) 배포한다 */
+  async function confirm(picked: DeployChoice) {
+    if (!choice) return;
+    const { repo: repoRef, settings, existing } = choice;
+    setChoice(null);
+    const rootDir = picked.rootDir ?? settings.rootDir;
+    try {
+      if (existing) {
+        await fixProject(
+          existing.id,
+          {
+            env: { ...picked.env, ...(settings.env ?? {}) },
+            generateEnv: picked.generateEnv,
+            reuseEnv: picked.reuseEnv,
+            ...(picked.rootDir !== undefined && picked.rootDir !== existing.rootDir
+              ? { rootDir: picked.rootDir }
+              : {}),
+          },
+          false,
+        );
+        launch(repoRef, { ...settings, rootDir });
+        return;
+      }
+      launch(repoRef, {
+        ...settings,
+        rootDir,
+        database: picked.database,
+        env: { ...picked.env, ...(settings.env ?? {}) },
+        generateEnv: picked.generateEnv,
+        reuseEnv: picked.reuseEnv,
+      });
+    } catch (problem) {
+      setError(problem instanceof ProjectError ? problem.message : "서버에 연결하지 못했어요.");
+    }
+  }
+  /** 실패 화면에서 고치기: 저장하고 같은 레포를 다시 배포해 따라간다 */
+  async function applyFix(input: FixInput) {
+    const projectId = state.result?.projectId;
+    const previous = last.current;
+    if (!projectId || !previous) return;
+    await fixProject(projectId, input, false);
+    flushSync(() => reset());
+    launch(previous.repo, {
+      ...previous.settings,
+      ...(input.rootDir !== undefined ? { rootDir: input.rootDir } : {}),
+    });
   }
   function restart() {
     if (entry.busy) return;
@@ -237,16 +297,16 @@ export function LandingPage({
               />
             )}
             {choice && (
-              <DatabaseDialog
-                detected={choice.detected}
+              <DeployCheckDialog
+                detection={choice.detection}
+                savedKeys={choice.existing?.envKeys}
+                confirmLabel={choice.existing ? "고쳐서 다시 배포" : "생성"}
                 onCancel={() => {
                   setChoice(null);
                   input.current?.focus();
                 }}
-                onCreate={(database) => {
-                  setChoice(null);
-                  start(choice.repo, { ...choice.settings, database }, target);
-                }}
+                onConfirm={(picked) => void confirm(picked)}
+                redetect={(dir) => detectRepo(choice.repo, { ...choice.settings, rootDir: dir })}
               />
             )}
             {flowerAvailable && dashboardReady && (
@@ -302,12 +362,15 @@ export function LandingPage({
                 )}
                 {state.result?.outcome === "rolled-back" &&
                   (state.result.message ?? ROLLBACK_MESSAGE)}
-                {state.result?.outcome === "failed" && (
-                  <>
-                    {state.result.message ?? "배포 서버가 이유를 남기지 않았어요."}{" "}
-                    내 계정에서 설정을 고친 뒤 다시 배포할 수 있어요.
-                  </>
-                )}
+                {state.result?.outcome === "failed" &&
+                  (state.result.diagnosis && state.result.projectId ? (
+                    <FixPanel diagnosis={state.result.diagnosis} onApply={applyFix} />
+                  ) : (
+                    <>
+                      {state.result.message ?? "배포 서버가 이유를 남기지 않았어요."}{" "}
+                      내 계정에서 설정을 고친 뒤 다시 배포할 수 있어요.
+                    </>
+                  ))}
               </DeployStatus>
             )}
           </Reveal>
