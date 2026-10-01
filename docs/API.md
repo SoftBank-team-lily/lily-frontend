@@ -155,3 +155,30 @@ DB 트랜잭션과 행 잠금으로 동시 상태 변경을 처리합니다.
 계정 화면에서 성공한 프로젝트를 선택하면 `/?project=<ID>`의 꽃 화면으로 이동합니다.
 꽃 클릭 전과 확대 완료 시 API에서 권한을 확인합니다.
 현재 공개 랜딩의 시연 결과는 실제 프로젝트나 배포 기록으로 저장하지 않습니다.
+
+## 프로젝트 관측 (2026-10-02)
+
+`GET /api/projects/:id/monitor?window=15m&level=all`
+
+로그인 및 이메일 인증, 프로젝트 소유권을 확인한다. `window`: `5m|15m|1h|6h`, `level`: `all|error`.
+앱 이름은 최신 `builder_runs.app_name`에서 찾는다. 요청에 앱 이름·namespace·서비스 URL을 받지 않는다.
+응답: `project`, `appName`, `namespace`, `window`, `generatedAt` 및 아래 리소스.
+
+| 필드 | 연결 서비스 |
+| --- | --- |
+| status | observer `/api/apps/{app}/status` |
+| metrics | observer `/api/apps/{app}/metrics` (앱 전체, errorRate 0~1, 지연 ms) |
+| pods | observer `/api/apps/{app}/pods` (CPU millicores, 메모리 MiB, 미수집 null) |
+| logs | observer `/api/apps/{app}/logs`, 최대 100줄, 저장된 비밀값 마스킹 |
+| app | observer `/api/apps`에서 해당 앱만 선택 |
+| route | ingress `/api/v1/routes/{namespace}/{app}` |
+| databases | provisioner `/api/databases?projectId={appName}`, id/engine/status만 반환 |
+
+각 리소스는 `{state:"ready",data:...}` 또는 `{state,message}`이다.
+상태: `unconfigured`(미설정), `unavailable`(연결·응답 실패), `pending`(배포·리소스 대기),
+`unsupported`(온프레미스 관측 미지원). 일부 실패에도 나머지 데이터는 반환한다.
+401/403/404는 인증·소유권 오류이며, 목업 데이터로 대체하지 않는다.
+조회는 캐시하지 않는다. 서비스 토큰은 서버 환경변수에만 둔다.
+
+`DASHBOARD_ORIGIN` 설정 시 프로젝트 entry의 destination은 `/dashboard?project={UUID}`이다.
+꽃 진입은 성공한 배포에만 허용한다. 계정의 대시보드 링크는 실패/진행 중인 프로젝트도 조회할 수 있다.

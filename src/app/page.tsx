@@ -61,5 +61,5 @@ export default async function Home({
       />
     );
   }
-  return <HomeClient key={user?.id ?? "guest"} user={user} />;
+  return <HomeClient key={user?.id ?? "guest"} user={user} dashboardConnected={!!(process.env.DASHBOARD_ORIGIN || process.env.DASHBOARD_URL)} />;
 }

@@ -4,7 +4,7 @@
 // queued 배포            → builder POST /api/builds (온프레미스면 /api/agents/{key}/builds) → running
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
 // 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
-// builder FAILED·ROLLED_BACK·기록 없음 → failed
+// builder FAILED·기록 없음 → failed, ROLLED_BACK → rolled-back
 // failed 이고 builder 진단(규칙 + AI)에 고칠 방법이 있으면 묻지 않고 설정을 고쳐 다시 배포한다
 //   (비밀값 생성, 기본값, 외부 서비스 키는 unset, 포트·헬스 경로·DB·앱 폴더). 최대 MAX_AUTO_FIX 번,
 //   같은 값으로 또 실패하면 그 전에 멈추고 화면이 원인과 입력 칸을 보인다
@@ -45,7 +45,7 @@ export type Active = {
   status: "queued" | "running";
   buildId: string;
 };
-export type FinalStatus = "succeeded" | "failed";
+export type FinalStatus = "succeeded" | "failed" | "rolled-back";
 
 export class BuilderRejected extends Error {}
 
@@ -120,9 +120,9 @@ export async function runOnce(deps: RunDeps) {
       // queued 에서 바로 succeeded 로는 바꿀 수 없다. running 을 먼저 기록한다
       if (active.status === "queued")
         await deps.event(active.deploymentId, "running");
-      if (result === "succeeded" && state?.url)
+      if ((result === "succeeded" || result === "rolled-back") && state?.url)
         await deps.saveResult(active.deploymentId, { url: state.url });
-      if (result === "failed")
+      if (result === "failed" || result === "rolled-back")
         await deps.saveResult(active.deploymentId, {
           message:
             state?.diagnosis?.cause ?? state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
@@ -190,8 +190,8 @@ export async function runOnce(deps: RunDeps) {
 export function finalStatus(builderStatus: string | null): FinalStatus | null {
   if (builderStatus === null) return "failed";
   if (builderStatus === "SUCCEEDED") return "succeeded";
-  if (builderStatus === "FAILED" || builderStatus === "ROLLED_BACK")
-    return "failed";
+  if (builderStatus === "FAILED") return "failed";
+  if (builderStatus === "ROLLED_BACK") return "rolled-back";
   return null;
 }
 

@@ -197,7 +197,7 @@ describe("배포 실행기 한 주기", () => {
       `${ok} running`,
       `${bad} running`,
       `${ok} succeeded`,
-      `${bad} failed`,
+      `${bad} rolled-back`,
     ]);
   });
 
@@ -318,7 +318,7 @@ describe("이름과 상태", () => {
   it("builder 상태를 최종 상태로 바꾼다", () => {
     expect(finalStatus("SUCCEEDED")).toBe("succeeded");
     expect(finalStatus("FAILED")).toBe("failed");
-    expect(finalStatus("ROLLED_BACK")).toBe("failed");
+    expect(finalStatus("ROLLED_BACK")).toBe("rolled-back");
     expect(finalStatus("BUILDING")).toBeNull();
     expect(finalStatus(null)).toBe("failed");
   });

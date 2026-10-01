@@ -20,8 +20,8 @@ export default async function AccountPage() {
       navigation={<AuthNav user={user} />}
     >
       <SessionGuard key={user.id} userId={user.id}>
-        <AccountForm key={user.id} user={user} />
-        <ProjectList key={user.id} initialPage={projects} />
+        <AccountForm key={`account:${user.id}`} user={user} />
+        <ProjectList key={`projects:${user.id}`} initialPage={projects} />
         <section
           className="mt-10 border-t border-line pt-8"
           aria-labelledby="password-title"

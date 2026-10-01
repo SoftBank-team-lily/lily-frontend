@@ -343,6 +343,7 @@ export function ProjectItem({
         </form>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-4 text-caption">
+          <a className="text-mute hover:text-ink" href={`/dashboard?project=${encodeURIComponent(project.id)}`}>대시보드로 이동</a>
           <button
             type="button"
             onClick={() => {

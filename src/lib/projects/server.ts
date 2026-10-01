@@ -427,7 +427,7 @@ export async function recordEvent(
     }
     const transitions: Record<DeploymentStatus, string[]> = {
       queued: ["running", "failed"],
-      running: ["succeeded", "failed"],
+      running: ["succeeded", "failed", "rolled-back"],
       succeeded: ["rolled-back"],
       failed: ["rolled-back"],
       "rolled-back": [],
@@ -467,7 +467,9 @@ export async function getProjectEntry(
       "정상 배포가 완료된 프로젝트만 열 수 있어요.",
     );
   let destination: string | null = null;
-  if (process.env.DASHBOARD_URL) {
+  if (process.env.DASHBOARD_ORIGIN) {
+    destination = `/dashboard?project=${encodeURIComponent(result.id)}`;
+  } else if (process.env.DASHBOARD_URL) {
     const url = new URL(process.env.DASHBOARD_URL);
     if (
       url.protocol !== "https:" &&
