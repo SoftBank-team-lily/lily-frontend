@@ -10,7 +10,9 @@ import type { DatabaseChoice, Diagnosis } from "@/lib/projects/types";
 import {
   BuilderRejected,
   buildSettings,
+  autoFixAttempt,
   fixInput,
+  MAX_AUTO_FIX,
   resultLine,
   runOnce,
   type RunDeps,
@@ -183,17 +185,38 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         request_key: string;
         project_id: string;
         owner_id: string;
+        env: Record<string, string>;
+        port: number | null;
+        health_path: string | null;
+        root_dir: string;
+        database: string | null;
       }>(
-        `SELECT d.request_key, d.project_id, p.owner_id FROM deployments d
-        JOIN projects p ON p.id=d.project_id WHERE d.id=$1`,
+        `SELECT d.request_key, d.project_id, p.owner_id, p.env, p.port, p.health_path, p.root_dir, p.database
+        FROM deployments d JOIN projects p ON p.id=d.project_id WHERE d.id=$1`,
         [deploymentId],
       );
       const row = found.rows[0];
-      if (!row || row.request_key.startsWith(AUTO_FIX_KEY)) return false;
+      if (!row) return false;
+      const attempt = autoFixAttempt(row.request_key);
+      if (attempt >= MAX_AUTO_FIX) return false;
       const input = fixInput(diagnosis);
       if (!input) return false;
+      // 이미 넣은 값으로 또 실패했으면 같은 걸 다시 해도 소용없다
+      const changes =
+        input.generateEnv.some((key) => !row.env?.[key]) ||
+        Object.entries(input.env).some(([key, value]) => row.env?.[key] !== value) ||
+        (input.port !== undefined && input.port !== row.port) ||
+        (input.healthPath !== undefined && input.healthPath !== row.health_path) ||
+        (input.rootDir !== undefined && input.rootDir !== row.root_dir) ||
+        (input.database !== undefined && input.database !== row.database);
+      if (!changes) return false;
       await fixProject(row.owner_id, row.project_id, input, false);
-      await createDeployment(row.owner_id, row.project_id, `${AUTO_FIX_KEY}${deploymentId}`);
+      const origin = row.request_key.replace(/^auto-fix-\d+-/, "");
+      await createDeployment(
+        row.owner_id,
+        row.project_id,
+        `${AUTO_FIX_KEY}${attempt + 1}-${attempt ? origin : deploymentId}`,
+      );
       return true;
     },
     async saveProgress(deploymentId, stage, logs) {

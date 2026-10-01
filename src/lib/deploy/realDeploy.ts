@@ -2,6 +2,7 @@ import { projectRequest, ProjectError } from "@/lib/projects/client";
 import type { DeploySettings, DeployTarget, Project, ProjectPage } from "@/lib/projects/types";
 import { toSlug } from "@/lib/repo/toSlug";
 import { STAGES } from "./stages";
+import { MAX_AUTO_FIX } from "@/lib/builder/run";
 import { lastLine, stageIndex } from "./progress";
 import type { DeployEvent, RepoRef } from "./types";
 
@@ -56,18 +57,18 @@ export async function realDeploy({
   }
 
   let shown = 0;
-  /** 실행기가 자동으로 고쳐 다시 보낸 배포를 한 번만 기다린다 */
-  let awaitedRetry = false;
+  /** 실패한 배포마다 한 번만 실행기의 자동 재배포를 기다린다 */
+  const awaited = new Set<string>();
   for (;;) {
     signal.throwIfAborted();
     const status = project.latestDeployment?.status ?? "queued";
     if (
       status === "failed" &&
-      project.latestDeployment?.diagnosis?.autoFixable &&
-      !project.latestDeployment.autoFixed &&
-      !awaitedRetry
+      project.latestDeployment?.diagnosis?.fixes.length &&
+      (project.latestDeployment.autoFixAttempt ?? 0) < MAX_AUTO_FIX &&
+      !awaited.has(project.latestDeployment.id)
     ) {
-      awaitedRetry = true;
+      awaited.add(project.latestDeployment.id);
       const retried = await awaitRetry(project, signal, request, wait);
       if (retried) {
         emit({ type: "log", line: `자동으로 고쳐 다시 배포해요: ${project.latestDeployment.diagnosis.cause}` });
@@ -83,6 +84,7 @@ export async function realDeploy({
         url: project.latestDeployment?.url ?? null,
         message: project.latestDeployment?.message ?? null,
         diagnosis: project.latestDeployment?.diagnosis ?? null,
+        unsetKeys: project.unsetKeys ?? [],
       };
       if (status === "succeeded") {
         STAGES.forEach((_, index) => emit({ type: "progress", index, fraction: 1 }));

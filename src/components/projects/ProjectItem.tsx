@@ -110,7 +110,15 @@ export function ProjectItem({
           : "배포 기록 없음"}
       </p>
       {latest?.autoFixed && (
-        <p className="mt-1 text-caption text-mute">이전 실패를 자동으로 고쳐 다시 배포한 기록이에요.</p>
+        <p className="mt-1 text-caption text-mute">
+          실패 원인을 찾아 자동으로 고쳐 다시 배포했어요 ({latest.autoFixAttempt}번째).
+        </p>
+      )}
+      {project.unsetKeys.length > 0 && (
+        <p className="mt-1 break-words text-caption text-mute">
+          값을 몰라 비워 둔 설정:{" "}
+          <span className="font-mono text-ink">{project.unsetKeys.join(", ")}</span>. 설정에서 넣으면 그 기능이 켜져요.
+        </p>
       )}
       {latest?.status === "failed" && latest.diagnosis ? (
         <FixPanel

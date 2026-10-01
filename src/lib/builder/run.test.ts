@@ -1,6 +1,7 @@
 import type { Diagnosis } from "@/lib/projects/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  autoFixAttempt,
   fixInput,
   allowed,
   buildSettings,
@@ -125,14 +126,27 @@ describe("진단으로 자동 고치기", () => {
     });
   });
 
-  it("사용자만 아는 값이 있으면 자동으로 고치지 않는다", () => {
+  it("사용자만 아는 값은 unset 으로, 앱 폴더는 진단이 고른 폴더로 묻지 않고 고친다", () => {
     expect(
       fixInput({
         ...JWT_MISSING,
         autoFixable: false,
-        fixes: [{ ...JWT_MISSING.fixes[0], kind: "INPUT", auto: false }],
+        fixes: [
+          { ...JWT_MISSING.fixes[0], env: "KAKAO_REST_API_KEY", kind: "INPUT", auto: false },
+          { type: "rootDir", env: null, kind: "DEFAULT", value: "web", hint: null, options: ["web", "api"], auto: true },
+        ],
       }),
-    ).toBeNull();
+    ).toEqual({ env: { KAKAO_REST_API_KEY: "unset" }, generateEnv: [], rootDir: "web" });
+  });
+
+  it("고칠 방법이 없으면 자동으로 다시 배포하지 않는다", () => {
+    expect(fixInput({ ...JWT_MISSING, fixes: [], autoFixable: false })).toBeNull();
+  });
+
+  it("자동 재배포 횟수는 배포 키에서 읽는다", () => {
+    expect(autoFixAttempt("builder:register")).toBe(0);
+    expect(autoFixAttempt("auto-fix-d1")).toBe(1);
+    expect(autoFixAttempt("auto-fix-2-d1")).toBe(2);
   });
 
   it("실패하면 원인을 남기고 실행기가 한 번 고쳐 다시 보낸다", async () => {

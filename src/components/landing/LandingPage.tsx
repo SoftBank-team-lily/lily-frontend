@@ -353,6 +353,15 @@ export function LandingPage({
                       </>
                     ) : null}
                     모니터링 화면에서 상태를 계속 볼 수 있어요.
+                    {!!state.result.unsetKeys?.length && (
+                      <span className="mt-2 block">
+                        값을 몰라 비워 둔 설정이 있어요:{" "}
+                        <span className="break-all font-mono text-ink">
+                          {state.result.unsetKeys.join(", ")}
+                        </span>
+                        . 내 계정의 설정에서 넣으면 그 기능이 켜져요.
+                      </span>
+                    )}
                   </>
                 )}
                 {!finished && state.log && (

@@ -80,6 +80,8 @@ export type Project = {
   healthPath: string | null;
   /** 환경변수 이름만 돌려준다 (값은 비밀일 수 있다) */
   envKeys: string[];
+  /** 값을 몰라 unset 으로 넣은 키. 넣으면 그 기능이 켜진다 */
+  unsetKeys: string[];
   createdAt: string;
   /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {
@@ -95,6 +97,8 @@ export type Project = {
     diagnosis: Diagnosis | null;
     /** 실행기가 이전 실패를 자동으로 고쳐 다시 보낸 배포 */
     autoFixed: boolean;
+    /** 몇 번째 자동 재배포인지. 사용자가 시작한 배포면 0 */
+    autoFixAttempt: number;
   } | null;
 };
 export type Deployment = {
@@ -115,6 +119,7 @@ export type ReadyProject = Omit<Project, "latestDeployment"> & {
     logs: string[];
     diagnosis: Diagnosis | null;
     autoFixed: boolean;
+    autoFixAttempt: number;
   };
 };
 export type ProjectEntry = {

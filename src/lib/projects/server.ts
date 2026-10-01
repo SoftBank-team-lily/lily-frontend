@@ -13,6 +13,7 @@ import type {
   ProjectEntry,
 } from "./types";
 import type { ProjectFix, ProjectUpdate } from "./schema";
+import { autoFixAttempt } from "@/lib/builder/run";
 
 type Row = {
   id: string;
@@ -24,6 +25,7 @@ type Row = {
   port: number | null;
   health_path: string | null;
   env_keys: string[];
+  unset_keys: string[];
   created_at: Date;
   deployment_id: string | null;
   status: DeploymentStatus | null;
@@ -36,7 +38,8 @@ type Row = {
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
 const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.root_dir, p.branch, p.port, p.health_path,
-  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
+  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
+  ARRAY(SELECT key FROM jsonb_each_text(p.env) WHERE value='unset' ORDER BY 1) AS unset_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
   r.diagnosis, d.request_key
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status, request_key FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
@@ -53,6 +56,7 @@ function project(row: Row): Project {
     port: row.port,
     healthPath: row.health_path,
     envKeys: row.env_keys,
+    unsetKeys: row.unset_keys ?? [],
     createdAt: row.created_at.toISOString(),
     latestDeployment:
       row.deployment_id && row.status
@@ -65,6 +69,7 @@ function project(row: Row): Project {
             logs: row.logs ?? [],
             diagnosis: row.diagnosis ?? null,
             autoFixed: row.request_key?.startsWith(AUTO_FIX_KEY) ?? false,
+            autoFixAttempt: autoFixAttempt(row.request_key),
           }
         : null,
   };
@@ -422,6 +427,7 @@ export async function getProjectEntry(
         logs: result.latestDeployment.logs,
         diagnosis: result.latestDeployment.diagnosis,
         autoFixed: result.latestDeployment.autoFixed,
+        autoFixAttempt: result.latestDeployment.autoFixAttempt,
       },
     },
     destination,
