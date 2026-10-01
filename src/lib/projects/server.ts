@@ -7,6 +7,7 @@ import type {
   ProjectPage,
   Deployment,
   DeploymentStatus,
+  DeployTarget,
   ProjectEntry,
 } from "./types";
 
@@ -14,23 +15,28 @@ type Row = {
   id: string;
   repo: string;
   name: string;
+  target: DeployTarget;
   created_at: Date;
   deployment_id: string | null;
   status: DeploymentStatus | null;
+  url: string | null;
 };
-const selectProject = `SELECT p.id, p.repo, p.name, p.created_at, d.id AS deployment_id, d.status
+// url: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.created_at, d.id AS deployment_id, d.status, r.url
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
-  ) d ON true`;
+  ) d ON true
+  LEFT JOIN builder_runs r ON r.deployment_id=d.id`;
 function project(row: Row): Project {
   return {
     id: row.id,
     repo: row.repo,
     name: row.name,
+    target: row.target,
     createdAt: row.created_at.toISOString(),
     latestDeployment:
       row.deployment_id && row.status
-        ? { id: row.deployment_id, status: row.status }
+        ? { id: row.deployment_id, status: row.status, url: row.url }
         : null,
   };
 }
@@ -67,11 +73,25 @@ export async function createProject(
   ownerId: string,
   repo: string,
   name?: string,
+  target: DeployTarget = "cloud",
 ) {
+  if (target === "onprem") {
+    // 에이전트 하나는 공개 주소 하나, 앱 하나만 띄운다 (lily-on-premise)
+    const existing = await db.query<{ name: string }>(
+      "SELECT name FROM projects WHERE owner_id=$1 AND target='onprem' LIMIT 1",
+      [ownerId],
+    );
+    if (existing.rows[0])
+      throw new ApiError(
+        409,
+        "ONPREM_LIMIT",
+        `내 PC에는 프로젝트를 하나만 둘 수 있어요. 지금은 '${existing.rows[0].name}'이(가) 있어요.`,
+      );
+  }
   const id = randomUUID();
   await db.query(
-    "INSERT INTO projects(id, owner_id, repo, name) VALUES($1,$2,$3,$4)",
-    [id, ownerId, repo, name ?? repo.split("/")[1]],
+    "INSERT INTO projects(id, owner_id, repo, name, target) VALUES($1,$2,$3,$4,$5)",
+    [id, ownerId, repo, name ?? repo.split("/")[1], target],
   );
   return getProject(ownerId, id);
 }
@@ -214,7 +234,11 @@ export async function getProjectEntry(
   return {
     project: {
       ...result,
-      latestDeployment: { id: result.latestDeployment.id, status: "succeeded" },
+      latestDeployment: {
+        id: result.latestDeployment.id,
+        status: "succeeded",
+        url: result.latestDeployment.url,
+      },
     },
     destination,
   };

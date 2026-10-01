@@ -29,7 +29,10 @@ export async function POST(request: Request) {
     const user = await requireUser(request, true);
     await limitWrites(user.id, "projects");
     const input = validate(projectSchema, await readJson(request));
-    return json(await createProject(user.id, input.repo, input.name), 201);
+    return json(
+      await createProject(user.id, input.repo, input.name, input.target),
+      201,
+    );
   } catch (error) {
     return apiError(error);
   }

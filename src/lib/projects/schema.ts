@@ -21,6 +21,7 @@ export const projectSchema = z
         return repo.toLowerCase();
       }),
     name: nameSchema.optional(),
+    target: z.enum(["cloud", "onprem"]).optional(),
   })
   .strict();
 export const updateSchema = z.object({ name: nameSchema }).strict();
