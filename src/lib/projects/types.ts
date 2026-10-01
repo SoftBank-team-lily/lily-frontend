@@ -8,6 +8,11 @@ export type DeploymentStatus =
 export type DeployTarget = "cloud" | "onprem";
 /** 앱 DB. none: DB 없이 배포 */
 export type DatabaseChoice = "postgres" | "mysql" | "none";
+/**
+ * 온프레미스 앱의 DB 위치. local: 내 PC 에 에이전트가 띄운 DB, external: 이미 있는 DB 주소,
+ * cloud: 클라우드 RDS 를 터널로 (데이터가 클라우드에 있다)
+ */
+export type DatabaseLocation = "local" | "external" | "cloud";
 /** 배포 설정. 비어 있으면 lily-builder 가 레포를 보고 정한다 */
 export type DeploySettings = {
   branch?: string;
@@ -17,6 +22,10 @@ export type DeploySettings = {
   env?: Record<string, string>;
   /** 등록할 때만 정한다. 비우면 builder 가 배포할 때 레포를 보고 정한다 */
   database?: DatabaseChoice;
+  /** 온프레미스 DB 위치. 등록할 때만 정한다 */
+  databaseLocation?: DatabaseLocation;
+  /** databaseLocation 이 external 일 때 DB 주소 (비밀번호 포함, 돌려주지 않는다) */
+  databaseUrl?: string;
   /** 서버가 랜덤 값을 만들어 넣을 환경변수 (JWT 서명 키 같은 앱 내부 비밀값) */
   generateEnv?: string[];
   /** 같은 레포의 다른 프로젝트에 저장된 값을 가져올 환경변수 */
@@ -84,6 +93,8 @@ export type Project = {
   branch: string | null;
   port: number | null;
   healthPath: string | null;
+  /** 온프레미스 앱의 DB 위치. 클라우드 프로젝트나 이 값 전에 등록한 프로젝트는 null */
+  databaseLocation: DatabaseLocation | null;
   /** 환경변수 이름만 돌려준다 (값은 비밀일 수 있다) */
   envKeys: string[];
   /** 값을 몰라 unset 으로 넣은 키. 넣으면 그 기능이 켜진다 */
