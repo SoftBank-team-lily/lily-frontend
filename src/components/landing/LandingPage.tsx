@@ -201,6 +201,8 @@ export function LandingPage({
         ...settings,
         rootDir,
         database: picked.database,
+        ...(picked.databaseLocation ? { databaseLocation: picked.databaseLocation } : {}),
+        ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
         env: { ...picked.env, ...(settings.env ?? {}) },
         generateEnv: picked.generateEnv,
         reuseEnv: picked.reuseEnv,
@@ -299,6 +301,8 @@ export function LandingPage({
             {choice && (
               <DeployCheckDialog
                 detection={choice.detection}
+                // DB 위치는 등록할 때만 정한다 (고쳐서 다시 배포할 때는 묻지 않는다)
+                target={choice.existing ? undefined : target}
                 savedKeys={choice.existing?.envKeys}
                 confirmLabel={choice.existing ? "고쳐서 다시 배포" : "생성"}
                 onCancel={() => {
