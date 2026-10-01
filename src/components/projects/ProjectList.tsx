@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  detectDatabase,
+  detectRepo,
   projectRequest,
   ProjectError,
 } from "@/lib/projects/client";
 import type {
-  DatabaseChoice,
+  Detection,
   DeployTarget,
   Project,
   ProjectPage,
@@ -19,7 +19,7 @@ import { ProjectItem } from "./ProjectItem";
 import { TargetChoice } from "./TargetChoice";
 import { AgentPanel } from "./AgentPanel";
 import { DeploySettingsFields } from "./DeploySettingsFields";
-import { DatabaseDialog } from "./DatabaseDialog";
+import { DeployCheckDialog, type DeployChoice } from "./DeployCheckDialog";
 import { readSettings } from "@/lib/projects/settingsForm";
 
 /** 배포가 진행 중이면(첫 배포가 만들어지기 전 포함) 목록을 다시 읽는 주기 */
@@ -38,10 +38,10 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   const [error, setError] = useState("");
   const [target, setTarget] = useState<DeployTarget>("cloud");
   const [agent, setAgent] = useState<AgentState>(null);
-  /** DB 확인을 기다리는 등록. 생성을 누르면 고른 DB 를 넣어 등록한다 */
+  /** 배포 전 확인을 기다리는 등록. 생성을 누르면 고른 DB·폴더·설정을 넣어 등록한다 */
   const [choice, setChoice] = useState<{
-    detected: DatabaseChoice;
-    body: Record<string, unknown>;
+    detection: Detection;
+    body: Record<string, unknown> & { repo: string; env?: Record<string, string>; branch?: string };
     form: HTMLFormElement;
   } | null>(null);
   const lock = useRef(false);
@@ -108,12 +108,12 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         : {}),
     };
     await request(async (signal) => {
-      const detected = await detectDatabase(body.repo, settings, signal);
+      const detection = await detectRepo(body.repo, settings, signal);
       if (signal.aborted) return;
-      setChoice({ detected, body, form });
+      setChoice({ detection, body, form });
     });
   }
-  async function confirm(database: DatabaseChoice) {
+  async function confirm(picked: DeployChoice) {
     if (!choice) return;
     const { body, form } = choice;
     setChoice(null);
@@ -122,7 +122,15 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal,
-        body: JSON.stringify({ ...body, database }),
+        body: JSON.stringify({
+          ...body,
+          database: picked.database,
+          ...(picked.rootDir !== undefined ? { rootDir: picked.rootDir } : {}),
+          // 배포 설정 칸에 직접 적은 값이 이긴다
+          env: { ...picked.env, ...(body.env ?? {}) },
+          generateEnv: picked.generateEnv,
+          reuseEnv: picked.reuseEnv,
+        }),
       });
       const result = await projectRequest<ProjectPage>("/api/projects", {
         signal,
@@ -209,10 +217,13 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         {error}
       </p>
       {choice && (
-        <DatabaseDialog
-          detected={choice.detected}
+        <DeployCheckDialog
+          detection={choice.detection}
           onCancel={() => setChoice(null)}
-          onCreate={confirm}
+          onConfirm={(picked) => void confirm(picked)}
+          redetect={(dir) =>
+            detectRepo(choice.body.repo, { branch: choice.body.branch, rootDir: dir })
+          }
         />
       )}
       {page.items.length ? (

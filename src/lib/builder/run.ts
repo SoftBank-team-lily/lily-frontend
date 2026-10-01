@@ -5,8 +5,12 @@
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
 // 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
 // builder FAILED·ROLLED_BACK·기록 없음 → failed
+// failed 인데 builder 진단이 사용자에게 묻지 않고 고칠 수 있다고 하면 (빠진 비밀값, 포트 등)
+//   설정을 고치고 한 번만 다시 배포한다. 자동으로 다시 보낸 배포가 또 실패하면 멈추고 화면이 묻는다
 //
 // 상태는 recordEvent 로만 바꾼다 (전환 규칙을 그대로 따른다).
+
+import type { Diagnosis } from "@/lib/projects/types";
 
 export type Pending = {
   deploymentId: string;
@@ -22,6 +26,8 @@ export type BuildState = {
   status: string;
   url: string | null;
   message: string | null;
+  /** 실패했을 때 원인과 고칠 방법 (lily-builder FailureDiagnoser) */
+  diagnosis?: Diagnosis | null;
   /** builder 로그 끝부분. 화면이 진행 단계와 로그를 보여 준다 */
   logs?: string[];
 };
@@ -31,6 +37,7 @@ export type RunResult = {
   appName?: string;
   url?: string | null;
   message?: string | null;
+  diagnosis?: Diagnosis | null;
 };
 export type Active = {
   deploymentId: string;
@@ -74,6 +81,10 @@ export type RunDeps = {
   ): Promise<string>;
   /** builder 에 기록이 없으면 null */
   buildStatus(buildId: string): Promise<BuildState | null>;
+  /**
+   * 진단대로 설정을 고치고 다시 배포한다. 이미 자동으로 다시 보낸 배포면 false (한 번만)
+   */
+  autoFix?(deploymentId: string, diagnosis: Diagnosis): Promise<boolean>;
   /** 진행 중인 builder 상태와 로그 끝부분을 남긴다 */
   saveProgress?(deploymentId: string, stage: string, logs: string[]): Promise<void>;
   event(
@@ -108,11 +119,21 @@ export async function runOnce(deps: RunDeps) {
         await deps.saveResult(active.deploymentId, { url: state.url });
       if (result === "failed")
         await deps.saveResult(active.deploymentId, {
-          message: state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
+          message:
+            state?.diagnosis?.cause ?? state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
+          diagnosis: state?.diagnosis ?? null,
         });
       if (result) {
         await deps.event(active.deploymentId, result);
         log(`배포 ${active.deploymentId}: ${result} (빌드 ${active.buildId})`);
+      }
+      if (result === "failed" && state?.diagnosis?.autoFixable && deps.autoFix) {
+        try {
+          if (await deps.autoFix(active.deploymentId, state.diagnosis))
+            log(`배포 ${active.deploymentId}: 진단대로 고쳐 다시 배포합니다 (${state.diagnosis.cause})`);
+        } catch (error) {
+          log(`배포 ${active.deploymentId} 자동 고치기 실패: ${message(error)}`);
+        }
       }
     } catch (error) {
       log(`배포 ${active.deploymentId} 상태 확인 실패: ${message(error)}`);
@@ -245,4 +266,32 @@ export function buildSettings(settings: DeploySettings | undefined) {
       ? { database: settings.database === "none" ? "" : settings.database }
       : {}),
   };
+}
+
+/**
+ * 진단의 고칠 방법 → 프로젝트 고치기 입력. 사용자에게 물어야 하는 값이 있으면 null (자동으로 고치지 않는다)
+ */
+export function fixInput(diagnosis: Diagnosis) {
+  if (!diagnosis.autoFixable || !diagnosis.fixes.length) return null;
+  const input: {
+    env: Record<string, string>;
+    generateEnv: string[];
+    port?: number;
+    healthPath?: string;
+    database?: "postgres" | "mysql" | "none";
+  } = { env: {}, generateEnv: [] };
+  for (const fix of diagnosis.fixes) {
+    if (fix.kind === "INPUT") return null;
+    if (fix.type === "env" && fix.env) {
+      if (fix.kind === "GENERATE") input.generateEnv.push(fix.env);
+      else if (fix.value !== null) input.env[fix.env] = fix.value;
+    } else if (fix.type === "port" && fix.value && /^\d+$/.test(fix.value)) {
+      input.port = Number(fix.value);
+    } else if (fix.type === "healthPath" && fix.value) {
+      input.healthPath = fix.value === "tcp" ? "tcp" : fix.value;
+    } else if (fix.type === "database" && (fix.value === "postgres" || fix.value === "mysql")) {
+      input.database = fix.value;
+    }
+  }
+  return input;
 }

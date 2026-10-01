@@ -37,6 +37,8 @@ export async function POST(request: Request) {
         healthPath: input.healthPath,
         env: input.env,
         database: input.database,
+        generateEnv: input.generateEnv,
+        reuseEnv: input.reuseEnv,
       }),
       201,
     );

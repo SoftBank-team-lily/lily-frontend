@@ -56,9 +56,25 @@ export async function realDeploy({
   }
 
   let shown = 0;
+  /** 실행기가 자동으로 고쳐 다시 보낸 배포를 한 번만 기다린다 */
+  let awaitedRetry = false;
   for (;;) {
     signal.throwIfAborted();
     const status = project.latestDeployment?.status ?? "queued";
+    if (
+      status === "failed" &&
+      project.latestDeployment?.diagnosis?.autoFixable &&
+      !project.latestDeployment.autoFixed &&
+      !awaitedRetry
+    ) {
+      awaitedRetry = true;
+      const retried = await awaitRetry(project, signal, request, wait);
+      if (retried) {
+        emit({ type: "log", line: `자동으로 고쳐 다시 배포해요: ${project.latestDeployment.diagnosis.cause}` });
+        project = retried;
+        continue;
+      }
+    }
     if (status === "succeeded" || status === "failed" || status === "rolled-back") {
       const result = {
         repo,
@@ -66,6 +82,7 @@ export async function realDeploy({
         projectId: project.id,
         url: project.latestDeployment?.url ?? null,
         message: project.latestDeployment?.message ?? null,
+        diagnosis: project.latestDeployment?.diagnosis ?? null,
       };
       if (status === "succeeded") {
         STAGES.forEach((_, index) => emit({ type: "progress", index, fraction: 1 }));
@@ -156,6 +173,26 @@ async function register(
     body: "{}",
   });
   return request<Project>(`/api/projects/${existing.id}`, { signal });
+}
+
+/** 실패 직후 실행기가 새 배포를 만들 때까지 잠깐 기다린다. 안 생기면 null */
+async function awaitRetry(
+  project: Project,
+  signal: AbortSignal,
+  request: typeof projectRequest,
+  wait: (ms: number, signal: AbortSignal) => Promise<void>,
+): Promise<Project | null> {
+  const failedId = project.latestDeployment?.id;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await wait(POLL_MS, signal);
+    try {
+      const next = await request<Project>(`/api/projects/${project.id}`, { signal });
+      if (next.latestDeployment && next.latestDeployment.id !== failedId) return next;
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
+  }
+  return null;
 }
 
 function sleep(ms: number, signal: AbortSignal) {

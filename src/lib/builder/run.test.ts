@@ -1,5 +1,7 @@
+import type { Diagnosis } from "@/lib/projects/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  fixInput,
   allowed,
   buildSettings,
   resultLine,
@@ -104,6 +106,52 @@ function fake(): Fake {
   };
   return deps;
 }
+
+const JWT_MISSING = {
+  cause: "앱이 기동할 때 필요한 설정 JWT_SECRET 이(가) 없어서 시작하지 못했어요.",
+  fixes: [
+    { type: "env", env: "JWT_SECRET", kind: "GENERATE", value: null, hint: null, options: [], auto: true },
+    { type: "env", env: "JWT_EXPIRATION", kind: "DEFAULT", value: "3600000", hint: null, options: [], auto: true },
+  ],
+  source: "rule",
+  autoFixable: true,
+} as const satisfies Diagnosis;
+
+describe("진단으로 자동 고치기", () => {
+  it("묻지 않고 고칠 수 있으면 생성할 키와 넣을 값을 만든다", () => {
+    expect(fixInput(JWT_MISSING)).toEqual({
+      env: { JWT_EXPIRATION: "3600000" },
+      generateEnv: ["JWT_SECRET"],
+    });
+  });
+
+  it("사용자만 아는 값이 있으면 자동으로 고치지 않는다", () => {
+    expect(
+      fixInput({
+        ...JWT_MISSING,
+        autoFixable: false,
+        fixes: [{ ...JWT_MISSING.fixes[0], kind: "INPUT", auto: false }],
+      }),
+    ).toBeNull();
+  });
+
+  it("실패하면 원인을 남기고 실행기가 한 번 고쳐 다시 보낸다", async () => {
+    const deps = fake();
+    const fixed: string[] = [];
+    deps.autoFix = async (deploymentId) => {
+      fixed.push(deploymentId);
+      return true;
+    };
+    const id = deps.queue("a/book-club");
+    await runOnce(deps);
+    deps.builderStatus.set("b1", { status: "FAILED", url: null, message: "cicd: Ready 아님", diagnosis: JWT_MISSING });
+    await runOnce(deps);
+
+    expect(deps.results.get(id)).toMatchObject({ message: JWT_MISSING.cause, diagnosis: JWT_MISSING });
+    expect(deps.events).toContain(`${id} failed`);
+    expect(fixed).toEqual([id]);
+  });
+});
 
 describe("배포 실행기 한 주기", () => {
   let deps: Fake;

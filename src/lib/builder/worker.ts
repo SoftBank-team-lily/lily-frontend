@@ -1,10 +1,16 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { createDeployment, recordEvent } from "@/lib/projects/server";
-import type { DatabaseChoice } from "@/lib/projects/types";
+import {
+  AUTO_FIX_KEY,
+  createDeployment,
+  fixProject,
+  recordEvent,
+} from "@/lib/projects/server";
+import type { DatabaseChoice, Diagnosis } from "@/lib/projects/types";
 import {
   BuilderRejected,
   buildSettings,
+  fixInput,
   resultLine,
   runOnce,
   type RunDeps,
@@ -122,16 +128,18 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
     async saveResult(deploymentId, result) {
       // builder 로 보내기 전 실패면 기록이 없어서 새로 만든다 (build_id 없이)
       await db.query(
-        `INSERT INTO builder_runs(deployment_id, build_id, app_name, url, message)
-        VALUES ($1, NULL, $2, $3, $4)
+        `INSERT INTO builder_runs(deployment_id, build_id, app_name, url, message, diagnosis)
+        VALUES ($1, NULL, $2, $3, $4, $5::jsonb)
         ON CONFLICT (deployment_id) DO UPDATE SET
           url=COALESCE(EXCLUDED.url, builder_runs.url),
-          message=COALESCE(EXCLUDED.message, builder_runs.message)`,
+          message=COALESCE(EXCLUDED.message, builder_runs.message),
+          diagnosis=COALESCE(EXCLUDED.diagnosis, builder_runs.diagnosis)`,
         [
           deploymentId,
           result.appName ?? "",
           result.url ?? null,
           result.message ?? null,
+          result.diagnosis ? JSON.stringify(result.diagnosis) : null,
         ],
       );
     },
@@ -160,13 +168,33 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         status: string;
         url: string | null;
         logs?: string[];
+        diagnosis?: Diagnosis | null;
       };
       return {
         status: build.status,
         url: build.url ?? null,
         message: resultLine(build.logs),
         logs: build.logs ?? [],
+        diagnosis: build.diagnosis ?? null,
       };
+    },
+    async autoFix(deploymentId, diagnosis) {
+      const found = await db.query<{
+        request_key: string;
+        project_id: string;
+        owner_id: string;
+      }>(
+        `SELECT d.request_key, d.project_id, p.owner_id FROM deployments d
+        JOIN projects p ON p.id=d.project_id WHERE d.id=$1`,
+        [deploymentId],
+      );
+      const row = found.rows[0];
+      if (!row || row.request_key.startsWith(AUTO_FIX_KEY)) return false;
+      const input = fixInput(diagnosis);
+      if (!input) return false;
+      await fixProject(row.owner_id, row.project_id, input, false);
+      await createDeployment(row.owner_id, row.project_id, `${AUTO_FIX_KEY}${deploymentId}`);
+      return true;
     },
     async saveProgress(deploymentId, stage, logs) {
       await db.query(
