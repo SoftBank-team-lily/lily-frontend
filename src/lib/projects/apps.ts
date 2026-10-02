@@ -53,6 +53,29 @@ export function runtimeOf(apps: Map<string, AppRuntime> | null, appName: string 
 }
 
 /**
+ * 클라우드 앱의 Ingress 를 내 PC 공개 호스트로 넘기거나(host) 클러스터로 되돌린다(null).
+ * @returns builder·cicd 가 받았으면 true. 앱 Ingress 가 없으면 false
+ */
+export async function routeUpstream(appName: string, host: string | null): Promise<boolean> {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/upstream`, {
+    method: host ? "PUT" : "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: host ? JSON.stringify({ host }) : undefined,
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    console.error(`builder upstream ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+  return true;
+}
+
+/**
  * builder 에 중지·시작·삭제를 보낸다.
  * @returns 클러스터에 앱이 없으면 false (404)
  * @throws ApiError 배포 중(409)이거나 builder 가 실패
