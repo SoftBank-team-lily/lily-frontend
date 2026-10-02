@@ -14,11 +14,11 @@ import type {
   Diagnosis,
   ProjectEntry,
 } from "./types";
-import type { ProjectFix, ProjectUpdate } from "./schema";
+import type { BurstInput, ProjectFix, ProjectUpdate } from "./schema";
 import { autoFixAttempt } from "@/lib/builder/run";
-import { appAction, clusterApps, routeUpstream, runtimeOf } from "./apps";
+import { appAction, burstStatus, clusterApps, moveHome, routeUpstream, runtimeOf, sendBurst, type BurstStatus } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime } from "./types";
+import type { AppRuntime, ProjectBurst } from "./types";
 
 type Row = {
   id: string;
@@ -26,6 +26,8 @@ type Row = {
   name: string;
   target: DeployTarget;
   database_location: DatabaseLocation | null;
+  burst_enabled: boolean;
+  burst_cloud_percent: number;
   root_dir: string;
   branch: string | null;
   port: number | null;
@@ -48,6 +50,7 @@ type Row = {
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
 const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.database_location, p.database, p.app_name AS fixed_app_name,
+  p.burst_enabled, p.burst_cloud_percent,
   p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
   ARRAY(SELECT key FROM jsonb_each_text(p.env) WHERE value='unset' ORDER BY 1) AS unset_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
@@ -58,8 +61,44 @@ const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.database_locatio
     SELECT id, status, request_key, move FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
   ) d ON true
   LEFT JOIN builder_runs r ON r.deployment_id=d.id`;
-/** @param apps 클러스터 앱 상태. 넘기지 않으면 runtime 은 null (builder 를 부르지 않는다) */
-function project(row: Row, apps: Map<string, AppRuntime> | null = null): Project {
+/** 버스팅을 다룰 수 있는 온프레미스 앱. 에이전트로 한 번 이상 보낸 적이 있어야 앱 이름이 있다 */
+function burstable(row: Row) {
+  return row.target === "onprem" && Boolean(row.app_name);
+}
+/**
+ * 화면에서 정한 버스팅 값과 에이전트가 보낸 상태. 에이전트를 다시 띄워 설정을 잊었으면 다시 보낸다.
+ * @param live builder 응답. 확인하지 못했으면 null
+ */
+async function burstOf(row: Row, live: BurstStatus | null): Promise<ProjectBurst | null> {
+  if (row.target !== "onprem" || !row.app_name) return null;
+  const desired = { enabled: row.burst_enabled, cloudPercent: row.burst_cloud_percent };
+  if (!live) return { ...desired, agent: "unknown", live: null };
+  if (!live.connected) return { ...desired, agent: "offline", live: null };
+  if (!live.supported) return { ...desired, agent: "outdated", live: null };
+  if (!live.state) return { ...desired, agent: "waiting", live: null };
+  const state = live.state;
+  if (state.enabled !== desired.enabled || state.cloudPercent !== desired.cloudPercent)
+    await sendBurst(row.app_name, desired.enabled, desired.cloudPercent).catch(() => undefined);
+  return { ...desired, agent: "connected", live: state };
+}
+async function burstsOf(rows: Row[]) {
+  const bursts = new Map<string, ProjectBurst | null>();
+  await Promise.all(
+    rows.filter(burstable).map(async (row) => {
+      bursts.set(row.id, await burstOf(row, await burstStatus(row.app_name!)));
+    }),
+  );
+  return bursts;
+}
+/**
+ * @param apps   클러스터 앱 상태. 넘기지 않으면 runtime 은 null (builder 를 부르지 않는다)
+ * @param bursts 온프레미스 앱의 버스팅 상태. 넘기지 않으면 burst 는 화면 설정만 (live 없음)
+ */
+function project(
+  row: Row,
+  apps: Map<string, AppRuntime> | null = null,
+  bursts: Map<string, ProjectBurst | null> | null = null,
+): Project {
   return {
     id: row.id,
     repo: row.repo,
@@ -76,6 +115,14 @@ function project(row: Row, apps: Map<string, AppRuntime> | null = null): Project
     unsetKeys: row.unset_keys ?? [],
     createdAt: row.created_at.toISOString(),
     runtime: row.target === "cloud" ? runtimeOf(apps, row.app_name) : null,
+    burst: !burstable(row)
+      ? null
+      : (bursts?.get(row.id) ?? {
+          enabled: row.burst_enabled,
+          cloudPercent: row.burst_cloud_percent,
+          agent: "unknown",
+          live: null,
+        }),
     latestDeployment:
       row.deployment_id && row.status
         ? {
@@ -105,10 +152,11 @@ export async function listProjects(
     [ownerId, cursor, limit + 1],
   );
   const rows = result.rows.slice(0, limit);
-  const apps = rows.some((row) => row.target === "cloud" && row.app_name)
-    ? await clusterApps()
-    : null;
-  const items = rows.map((row) => project(row, apps));
+  const [apps, bursts] = await Promise.all([
+    rows.some((row) => row.target === "cloud" && row.app_name) ? clusterApps() : null,
+    burstsOf(rows),
+  ]);
+  const items = rows.map((row) => project(row, apps, bursts));
   return {
     items,
     nextCursor: result.rows.length > limit ? items.at(-1)!.id : null,
@@ -133,7 +181,46 @@ export async function getProject(
   return project(
     row,
     withRuntime && row.target === "cloud" && row.app_name ? await clusterApps() : null,
+    withRuntime ? await burstsOf([row]) : null,
   );
+}
+/** 온프레미스 앱이고 에이전트로 보낸 적이 있다 */
+function requireBurstable(row: Row): asserts row is Row & { app_name: string } {
+  if (row.target !== "onprem")
+    throw new ApiError(409, "CLOUD", "클라우드 버스팅은 온프레미스 앱에서만 써요.");
+  if (!row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "먼저 내 PC 로 배포해 주세요.");
+}
+/**
+ * 클라우드 버스팅을 켜고 끄고 비율을 정한다. 값은 저장하고 에이전트에 보낸다.
+ * 에이전트가 끊겨 있어도 저장은 남고, 다시 붙으면 목록을 읽을 때 다시 보낸다.
+ */
+export async function updateBurst(ownerId: string, id: string, input: BurstInput) {
+  const row = await projectRow(ownerId, id);
+  requireBurstable(row);
+  await db.query(
+    "UPDATE projects SET burst_enabled=$3, burst_cloud_percent=$4 WHERE id=$1 AND owner_id=$2",
+    [id, ownerId, input.enabled, input.cloudPercent],
+  );
+  await sendBurst(row.app_name, input.enabled, input.cloudPercent);
+  return getProject(ownerId, id, true);
+}
+/**
+ * 공개 주소의 거점을 옮긴다 (클라우드 ↔ 내 PC). 옮기는 동안의 단계와 실패 이유는 burst.live 의 home·homeEvent 로 본다.
+ */
+export async function startHomeMove(ownerId: string, id: string, home: "cloud" | "onprem") {
+  const row = await projectRow(ownerId, id);
+  requireBurstable(row);
+  assertIdle(row);
+  const live = await burstStatus(row.app_name);
+  if (!live?.connected)
+    throw new ApiError(409, "AGENT_UNAVAILABLE", "내 PC 에이전트가 연결돼 있지 않아요.");
+  if (!live.supported || !live.state?.movable)
+    throw new ApiError(409, "NOT_MOVABLE", "이 에이전트는 거점을 옮길 수 없어요. 연결 명령으로 에이전트를 다시 실행해 주세요.");
+  if (live.state.home.startsWith("MOVING"))
+    throw new ApiError(409, "MOVING", "이미 옮기는 중이에요.");
+  moveHome(row.app_name, home);
+  return getProject(ownerId, id, true);
 }
 /** 중지·시작·삭제 전에 본다. 배포가 진행 중이면 실행기가 곧 앱을 다시 만들거나 바꾼다 */
 function assertIdle(row: Row) {

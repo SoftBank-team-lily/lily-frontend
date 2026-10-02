@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime } from "./types";
+import type { AppRuntime, BurstLive } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -45,6 +45,80 @@ export async function clusterApps(): Promise<Map<string, AppRuntime> | null> {
   } catch {
     return null;
   }
+}
+
+/** builder 가 돌려주는 버스팅 상태. state 는 에이전트가 보낸 burst-state 그대로다 */
+export type BurstStatus = { connected: boolean; supported: boolean; state: BurstLive | null };
+
+/** 온프레미스 앱의 버스팅·거점 상태. 에이전트를 찾지 못했으면 connected=false, 확인하지 못했으면 null */
+export async function burstStatus(appName: string): Promise<BurstStatus | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/burst`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (response.status === 404) return { connected: false, supported: false, state: null };
+    if (!response.ok) return null;
+    return (await response.json()) as BurstStatus;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 버스팅 설정을 에이전트에 보낸다.
+ * @throws ApiError 에이전트가 끊겼거나 버스팅을 모르는 판(409), builder 가 실패
+ */
+export async function sendBurst(appName: string, enabled: boolean, cloudPercent: number) {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/burst`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, cloudPercent }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 404)
+    throw new ApiError(409, "NO_AGENT", "이 앱을 배포한 에이전트를 찾지 못했어요. 다시 배포해 주세요.");
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new ApiError(409, "AGENT_UNAVAILABLE", agentMessage(body?.message));
+  }
+  if (!response.ok) {
+    console.error(`builder burst ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+}
+
+function agentMessage(message: string | undefined) {
+  if (message?.includes("최신 이미지"))
+    return "에이전트가 예전 판이에요. 연결 명령으로 에이전트를 다시 실행해 주세요.";
+  return "내 PC 에이전트가 연결돼 있지 않아요.";
+}
+
+/**
+ * 공개 주소의 거점을 옮긴다. builder 는 전환이 끝날 때까지 응답하지 않으므로 기다리지 않고,
+ * 진행은 버스팅 상태(home·homeEvent)로 본다.
+ */
+export function moveHome(appName: string, home: "cloud" | "onprem") {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  void fetch(`${base}/api/apps/${encodeURIComponent(appName)}/home`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ home }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20 * 60_000),
+  })
+    .then(async (response) => {
+      if (!response.ok) console.error(`builder home ${appName} ${home}: ${response.status} ${await response.text()}`);
+    })
+    .catch((error: unknown) => console.error(`builder home ${appName} ${home}:`, error));
 }
 
 export function runtimeOf(apps: Map<string, AppRuntime> | null, appName: string | null): AppRuntime | null {

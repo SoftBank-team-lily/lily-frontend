@@ -5,6 +5,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { fixProject, projectRequest, ProjectError } from "@/lib/projects/client";
 import { FixPanel } from "./FixPanel";
 import { MovePanel } from "./MovePanel";
+import { BurstPanel } from "./BurstPanel";
 import type { AppState, Project, DeploymentStatus } from "@/lib/projects/types";
 import { STAGES } from "@/lib/deploy/stages";
 import { lastLine, stageIndex } from "@/lib/deploy/progress";
@@ -269,6 +270,9 @@ export function ProjectItem({
             {latest.logs.join("\n")}
           </pre>
         </details>
+      )}
+      {project.burst && !deploying && !editing && (
+        <BurstPanel project={project} burst={project.burst} onUpdate={onUpdate} />
       )}
       {editing ? (
         <form onSubmit={save} className="mt-4 space-y-3" aria-busy={busy}>

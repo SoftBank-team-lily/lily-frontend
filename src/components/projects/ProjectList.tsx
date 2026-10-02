@@ -20,6 +20,7 @@ import { TargetChoice } from "./TargetChoice";
 import { AgentPanel } from "./AgentPanel";
 import { DeploySettingsFields } from "./DeploySettingsFields";
 import { DeployCheckDialog, type DeployChoice } from "./DeployCheckDialog";
+import { burstChanging } from "@/lib/projects/burst";
 import { readSettings } from "@/lib/projects/settingsForm";
 
 /** 배포가 진행 중이면(첫 배포가 만들어지기 전 포함) 목록을 다시 읽는 주기 */
@@ -30,7 +31,9 @@ function inProgress(project: Project) {
     project.latestDeployment.status === "queued" ||
     project.latestDeployment.status === "running" ||
     // 다시 시작했거나 배포 직후 Pod 가 아직 뜨는 중
-    project.runtime?.state === "starting"
+    project.runtime?.state === "starting" ||
+    // 버스팅 설정이 에이전트에 반영되는 중이거나, 켜져 있어 처리량이 바뀌거나, 거점을 옮기는 중
+    burstChanging(project.burst)
   );
 }
 
