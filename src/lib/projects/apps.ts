@@ -104,14 +104,14 @@ function agentMessage(message: string | undefined) {
  * 공개 주소의 거점을 옮긴다. builder 는 전환이 끝날 때까지 응답하지 않으므로 기다리지 않고,
  * 진행은 버스팅 상태(home·homeEvent)로 본다.
  */
-export function moveHome(appName: string, home: "cloud" | "onprem") {
+export function moveHome(appName: string, home: "cloud" | "onprem", migrateDatabase = false) {
   const base = builderUrl();
   if (!base)
     throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
   void fetch(`${base}/api/apps/${encodeURIComponent(appName)}/home`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ home }),
+    body: JSON.stringify({ home, migrateDatabase }),
     cache: "no-store",
     signal: AbortSignal.timeout(20 * 60_000),
   })

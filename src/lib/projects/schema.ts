@@ -153,7 +153,10 @@ export const burstSchema = z
   .strict();
 export type BurstInput = z.infer<typeof burstSchema>;
 /** 공개 주소가 가리킬 곳 */
-export const homeSchema = z.object({ home: z.enum(["cloud", "onprem"]) }).strict();
+/** migrateDatabase: 앱 DB 도 옮긴다 (클라우드로: 내 PC → RDS, 내 PC 로: RDS → 내 PC) */
+export const homeSchema = z
+  .object({ home: z.enum(["cloud", "onprem"]), migrateDatabase: z.boolean().optional() })
+  .strict();
 export const eventSchema = z
   .object({
     eventId: z.string().min(1).max(128),

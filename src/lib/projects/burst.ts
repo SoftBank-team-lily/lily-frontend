@@ -1,4 +1,4 @@
-import type { HomePhase, ProjectBurst } from "./types";
+import type { BurstLive, HomePhase, ProjectBurst } from "./types";
 
 /** 버스팅 한 줄 요약: 꺼짐 · 대기(0%) · 분산 N% 와 지금 단계 */
 export function burstSummary(burst: ProjectBurst): { title: string; detail: string | null } {
@@ -49,6 +49,14 @@ export const homeLabels: Record<HomePhase, string> = {
   MOVING_TO_ONPREM: "내 PC 로 옮기는 중",
   UNKNOWN: "알 수 없음",
 };
+
+/**
+ * 거점을 옮길 때 DB 도 옮길지 물어야 한다. 클라우드로 갈 때 DB 가 내 PC 에 있거나, 내 PC 로 올 때 DB 가 RDS 에 있으면
+ */
+export function databaseMoveOffer(live: BurstLive | null, target: "cloud" | "onprem"): boolean {
+  if (!live?.databaseMovable) return false;
+  return target === "cloud" ? live.databaseMode === "local" : live.databaseMode === "cloud";
+}
 
 /** 상태가 곧 바뀌어서 목록을 다시 읽어야 한다 */
 export function burstChanging(burst: ProjectBurst | null): boolean {

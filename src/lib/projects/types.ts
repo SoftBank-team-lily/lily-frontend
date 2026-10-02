@@ -107,6 +107,10 @@ export type BurstLive = {
   /** 거점을 옮길 수 있는 연결이 있다 */
   movable: boolean;
   homeEvent: string;
+  /** 지금 앱 DB 위치 (local · cloud · external). DB 가 없거나 예전 에이전트면 비어 있다 */
+  databaseMode?: string;
+  /** 거점과 같이 DB 를 옮길 수 있다 (postgres, 내 PC 또는 RDS) */
+  databaseMovable?: boolean;
 };
 /**
  * 온프레미스 앱의 버스팅. enabled·cloudPercent 는 화면에서 정한 값이고 live 는 에이전트가 보낸 지금 상태다.

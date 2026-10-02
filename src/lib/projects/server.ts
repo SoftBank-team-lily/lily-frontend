@@ -18,7 +18,8 @@ import type { BurstInput, ProjectFix, ProjectUpdate } from "./schema";
 import { autoFixAttempt } from "@/lib/builder/run";
 import { appAction, burstStatus, clusterApps, moveHome, routeUpstream, runtimeOf, sendBurst, type BurstStatus } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, ProjectBurst } from "./types";
+import type { AppRuntime, BurstLive, ProjectBurst } from "./types";
+import { databaseMoveOffer } from "./burst";
 
 type Row = {
   id: string;
@@ -79,7 +80,20 @@ async function burstOf(row: Row, live: BurstStatus | null): Promise<ProjectBurst
   const state = live.state;
   if (state.enabled !== desired.enabled || state.cloudPercent !== desired.cloudPercent)
     await sendBurst(row.app_name, desired.enabled, desired.cloudPercent).catch(() => undefined);
+  await followDatabase(row, state);
   return { ...desired, agent: "connected", live: state };
+}
+/**
+ * 거점 전환이 DB 를 옮겼으면(내 PC ↔ RDS) 프로젝트의 DB 위치를 에이전트 값으로 맞춘다.
+ * 그러지 않으면 다음 배포가 옛 위치로 앱을 띄워 데이터가 갈라진다.
+ */
+async function followDatabase(row: Row, state: BurstLive) {
+  const mode = state.databaseMode;
+  if (mode !== "local" && mode !== "cloud") return;
+  if (row.database_location !== "local" && row.database_location !== "cloud") return;
+  if (row.database_location === mode || state.home.startsWith("MOVING")) return;
+  await db.query("UPDATE projects SET database_location=$2 WHERE id=$1", [row.id, mode]);
+  row.database_location = mode;
 }
 async function burstsOf(rows: Row[]) {
   const bursts = new Map<string, ProjectBurst | null>();
@@ -208,7 +222,12 @@ export async function updateBurst(ownerId: string, id: string, input: BurstInput
 /**
  * 공개 주소의 거점을 옮긴다 (클라우드 ↔ 내 PC). 옮기는 동안의 단계와 실패 이유는 burst.live 의 home·homeEvent 로 본다.
  */
-export async function startHomeMove(ownerId: string, id: string, home: "cloud" | "onprem") {
+export async function startHomeMove(
+  ownerId: string,
+  id: string,
+  home: "cloud" | "onprem",
+  migrateDatabase = false,
+) {
   const row = await projectRow(ownerId, id);
   requireBurstable(row);
   assertIdle(row);
@@ -219,7 +238,13 @@ export async function startHomeMove(ownerId: string, id: string, home: "cloud" |
     throw new ApiError(409, "NOT_MOVABLE", "이 에이전트는 거점을 옮길 수 없어요. 연결 명령으로 에이전트를 다시 실행해 주세요.");
   if (live.state.home.startsWith("MOVING"))
     throw new ApiError(409, "MOVING", "이미 옮기는 중이에요.");
-  moveHome(row.app_name, home);
+  if (migrateDatabase && !databaseMoveOffer(live.state, home))
+    throw new ApiError(
+      409,
+      "DATABASE_NOT_MOVABLE",
+      "이 앱의 DB 는 옮길 수 없어요. postgres 이고 DB 가 출발하는 쪽(내 PC 또는 RDS)에 있어야 해요.",
+    );
+  moveHome(row.app_name, home, migrateDatabase);
   return getProject(ownerId, id, true);
 }
 /** 중지·시작·삭제 전에 본다. 배포가 진행 중이면 실행기가 곧 앱을 다시 만들거나 바꾼다 */
