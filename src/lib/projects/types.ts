@@ -141,8 +141,10 @@ export type BuildProgress = {
 export type ProjectBurst = {
   enabled: boolean;
   cloudPercent: number;
-  agent: "connected" | "waiting" | "outdated" | "offline" | "unknown";
+  agent: "connected" | "waiting" | "outdated" | "offline" | "unknown" | "other";
   live: BurstLive | null;
+  /** agent 가 other 일 때 에이전트가 지금 다루는 다른 앱 */
+  agentApp?: string;
   /** standbyBuild: 버스팅 대기 배포, homeBuild: 거점 전환 대기 배포 */
   builds?: { standbyBuild?: BuildProgress; homeBuild?: BuildProgress };
 };
@@ -172,6 +174,8 @@ export type Project = {
   runtime: AppRuntime | null;
   /** 온프레미스 앱의 클라우드 버스팅·거점. 클라우드 프로젝트나 아직 배포한 적 없으면 null */
   burst: ProjectBurst | null;
+  /** 온프레미스 앱의 클라우드 쪽 Pod (버스팅 대기·거점 전환용). 클라우드 앱이거나 확인 못 했으면 null */
+  cloudPods: AppRuntime | null;
   /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {
     id: string;

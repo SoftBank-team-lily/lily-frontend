@@ -5,6 +5,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { fixProject, projectRequest, ProjectError } from "@/lib/projects/client";
 import { FixPanel } from "./FixPanel";
 import { MovePanel } from "./MovePanel";
+import { StatusOverview } from "./StatusOverview";
 import { BurstPanel } from "./BurstPanel";
 import type { AppState, Project, DeploymentStatus } from "@/lib/projects/types";
 import { STAGES } from "@/lib/deploy/stages";
@@ -183,7 +184,9 @@ export function ProjectItem({
       <h3 className="break-words text-lead font-semibold">{project.name}</h3>
       <p className="mt-1 break-all text-caption text-mute">{project.repo}</p>
       <p className="mt-3 text-caption text-mute">
-        {movingNow ? "내 PC 로 옮기는 중" : targetLabels[project.target]} ·{" "}
+        {movingNow ? "내 PC 로 옮기는 중" : `${targetLabels[project.target]} 배포`} ·{" "}
+        {project.burst?.live?.home === "CLOUD" && <>공개 주소 클라우드 · </>}
+        {project.burst?.live?.home?.startsWith("MOVING") && <>공개 주소 옮기는 중 · </>}
         {project.movedFromCloud && <>클라우드 주소 그대로 · </>}
         {project.databaseLocation && <>{locationLabels[project.databaseLocation]} · </>}
         {project.latestDeployment
@@ -271,6 +274,7 @@ export function ProjectItem({
           </pre>
         </details>
       )}
+      {project.burst && !editing && <StatusOverview project={project} onUpdate={onUpdate} />}
       {project.burst && !deploying && !editing && (
         <BurstPanel project={project} burst={project.burst} onUpdate={onUpdate} />
       )}

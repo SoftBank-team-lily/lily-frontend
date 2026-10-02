@@ -86,7 +86,12 @@ async function burstOf(row: Row, live: BurstStatus | null): Promise<ProjectBurst
   if (!live) return { ...desired, agent: "unknown", live: null };
   if (!live.connected) return { ...desired, agent: "offline", live: null };
   if (!live.supported) return { ...desired, agent: "outdated", live: null };
-  if (!live.state) return { ...desired, agent: "waiting", live: null };
+  if (!live.state) {
+    // 에이전트는 앱 하나만 다룬다. 다른 앱을 배포했으면 이 앱 상태를 보내지 않는다
+    if (live.agentApp && live.agentApp !== row.app_name)
+      return { ...desired, agent: "other", live: null, agentApp: live.agentApp };
+    return { ...desired, agent: "waiting", live: null };
+  }
   const state = live.state;
   // 거점을 옮기는 중에는 에이전트가 켜기·끄기를 받지 않는다. 끝난 뒤에 맞춘다
   if (
@@ -143,6 +148,7 @@ function project(
     unsetKeys: row.unset_keys ?? [],
     createdAt: row.created_at.toISOString(),
     runtime: row.target === "cloud" ? runtimeOf(apps, row.app_name) : null,
+    cloudPods: burstable(row) && apps ? runtimeOf(apps, row.app_name) : null,
     burst: !burstable(row)
       ? null
       : (bursts?.get(row.id) ?? {
@@ -181,7 +187,7 @@ export async function listProjects(
   );
   const rows = result.rows.slice(0, limit);
   const [apps, bursts] = await Promise.all([
-    rows.some((row) => row.target === "cloud" && row.app_name) ? clusterApps() : null,
+    rows.some((row) => row.app_name) ? clusterApps() : null,
     burstsOf(rows),
   ]);
   const items = rows.map((row) => project(row, apps, bursts));
@@ -208,7 +214,7 @@ export async function getProject(
   const row = await projectRow(ownerId, id);
   return project(
     row,
-    withRuntime && row.target === "cloud" && row.app_name ? await clusterApps() : null,
+    withRuntime && row.app_name ? await clusterApps() : null,
     withRuntime ? await burstsOf([row]) : null,
   );
 }
@@ -273,6 +279,22 @@ export async function startHomeMove(
       "이 앱의 DB 는 옮길 수 없어요. postgres 이고 DB 가 출발하는 쪽(내 PC 또는 RDS)에 있어야 해요.",
     );
   moveHome(row.app_name, home, migrateDatabase);
+  return getProject(ownerId, id, true);
+}
+/**
+ * 쓰이지 않고 떠 있는 클라우드 Pod 를 내린다 (공개 주소가 내 PC 이고 버스팅이 꺼져 있을 때만).
+ * 옮기다 끊긴 거점 전환이나 꺼진 버스팅이 남긴 Pod 다. Deployment·Ingress 는 남아서 다음 전환이 다시 띄운다.
+ */
+export async function stopIdleCloud(ownerId: string, id: string) {
+  const row = await projectRow(ownerId, id);
+  requireBurstable(row);
+  if (row.burst_enabled)
+    throw new ApiError(409, "BURST_ON", "버스팅이 켜져 있으면 대기 Pod 를 그대로 둬요. 버스팅을 끄면 내려가요.");
+  const live = await burstStatus(row.app_name);
+  if (live?.state && live.state.home !== "ONPREM")
+    throw new ApiError(409, "NOT_ONPREM", "공개 주소가 내 PC 일 때만 클라우드 Pod 를 내려요.");
+  if (!(await appAction(row.app_name, "stop")))
+    throw new ApiError(409, "NOT_RUNNING", "클라우드에 이 앱이 없어요.");
   return getProject(ownerId, id, true);
 }
 /** 진행 중인 거점 전환을 멈춘다. 주소를 바꾸기 전이면 출발 거점으로 되돌아가고, 결과는 burst.live 로 본다 */

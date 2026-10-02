@@ -53,6 +53,8 @@ export type BurstStatus = {
   supported: boolean;
   state: BurstLive | null;
   builds?: { standbyBuild?: BuildProgress; homeBuild?: BuildProgress };
+  /** 에이전트가 지금 다루는 앱. 이 앱이 아니면 state 가 비어 있다 */
+  agentApp?: string;
 };
 
 /**
