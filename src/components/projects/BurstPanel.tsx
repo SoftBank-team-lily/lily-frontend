@@ -36,7 +36,17 @@ export function BurstPanel({
 }) {
   const [draft, setDraft] = useState(burst.cloudPercent);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  /** 마지막으로 실패한 동작. offline: 에이전트가 끊겨서 실패했다, seen: 실패할 때 보고 있던 상태 */
+  const [error, setError] = useState<{
+    action: string;
+    at: string;
+    text: string;
+    offline: boolean;
+    seen: ProjectBurst;
+  } | null>(null);
+  // 끊김 때문에 실패했는데 그 뒤 새 상태가 왔고 에이전트가 붙어 있으면, 그 오류는 더 이상 맞지 않아 숨긴다
+  const shownError =
+    error && !(error.offline && error.seen !== burst && burst.agent === "connected") ? error : null;
   const [confirmHome, setConfirmHome] = useState<"cloud" | "onprem" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragging = useRef(false);
@@ -61,19 +71,25 @@ export function BurstPanel({
   /** 거점을 지금 못 옮기는 이유 (버스팅 대기 배포 중) */
   const homeLocked = homeLock(burst);
 
-  async function send(operation: () => Promise<Project>) {
+  async function send(action: string, operation: () => Promise<Project>) {
     setBusy(true);
-    setError("");
+    setError(null);
     try {
       onUpdate(await operation());
     } catch (problem) {
-      setError(problem instanceof ProjectError ? problem.message : "서버에 연결하지 못했어요.");
+      setError({
+        action,
+        at: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+        text: problem instanceof ProjectError ? problem.message : "서버에 연결하지 못했어요.",
+        offline: problem instanceof ProjectError && problem.code === "AGENT_OFFLINE",
+        seen: burst,
+      });
     } finally {
       setBusy(false);
     }
   }
-  const save = (enabled: boolean, cloudPercent: number) =>
-    send(() =>
+  const save = (enabled: boolean, cloudPercent: number, action?: string) =>
+    send(action ?? (enabled === burst.enabled ? "비율 바꾸기" : enabled ? "버스팅 켜기" : "버스팅 끄기"), () =>
       projectRequest<Project>(`/api/projects/${project.id}/burst`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -90,7 +106,7 @@ export function BurstPanel({
     }, COMMIT_MS);
   }
   const move = (target: "cloud" | "onprem", migrateDatabase: boolean) =>
-    send(() =>
+    send(target === "cloud" ? "클라우드로 옮기기" : "내 PC 로 되돌리기", () =>
       projectRequest<Project>(`/api/projects/${project.id}/home`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -99,7 +115,7 @@ export function BurstPanel({
     ).then(() => setConfirmHome(null));
   const offer = confirmHome ? databaseMoveOffer(live, confirmHome) : false;
   const cancelHome = () =>
-    send(() =>
+    send("옮기기 취소", () =>
       projectRequest<Project>(`/api/projects/${project.id}/home/cancel`, { method: "POST" }),
     );
 
@@ -126,7 +142,7 @@ export function BurstPanel({
           key={activity.kind}
           activity={activity}
           busy={busy}
-          onCancel={() => void (activity.kind === "home" ? cancelHome() : save(false, burst.cloudPercent))}
+          onCancel={() => void (activity.kind === "home" ? cancelHome() : save(false, burst.cloudPercent, "대기 배포 취소"))}
         />
       ))}
       {running.length > 1 && (
@@ -238,7 +254,7 @@ export function BurstPanel({
         </div>
       )}
       <p role="alert" className="mt-2 text-danger">
-        {error}
+        {shownError && `${shownError.action} 실패 (${shownError.at}) · ${shownError.text}`}
       </p>
     </section>
   );
