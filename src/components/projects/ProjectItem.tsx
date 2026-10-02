@@ -166,12 +166,24 @@ export function ProjectItem({
     }
   }
   return (
-    <li className="rounded-xl border border-line p-5">
-      <PlaceBadgeView
-        badge={placeBadge(project, movingNow ? Math.min(99, Math.round(((step + 1) / STAGES.length) * 100)) : null)}
-      />
-      <h3 className="mt-2 break-words text-lead font-semibold">{project.name}</h3>
-      <p className="mt-1 break-all text-caption text-mute">{project.repo}</p>
+    <li className="rounded-xl border border-line p-5 transition-colors hover:border-ink">
+      {/* 카드 윗부분을 누르면 그 프로젝트의 모니터링·거점·트래픽 화면으로 간다 */}
+      <Link
+        href={`/projects/${encodeURIComponent(project.id)}`}
+        className="group -m-2 flex items-start justify-between gap-3 rounded-lg p-2 hover:bg-field"
+        aria-label={`${project.name} 자세히 보기`}
+      >
+        <div className="min-w-0">
+          <PlaceBadgeView
+            badge={placeBadge(project, movingNow ? Math.min(99, Math.round(((step + 1) / STAGES.length) * 100)) : null)}
+          />
+          <h3 className="mt-2 break-words text-lead font-semibold group-hover:text-accent">{project.name}</h3>
+          <p className="mt-1 break-all text-caption text-mute">{project.repo}</p>
+        </div>
+        <span className="mt-1 text-display leading-none text-mute group-hover:text-ink" aria-hidden="true">
+          ›
+        </span>
+      </Link>
       <p className="mt-3 text-caption text-mute">
         {movingNow ? "클라우드 → 온프레미스 전환 중" : `${targetLabels[project.target]} 배포`} ·{" "}
         {project.movedFromCloud && <>클라우드 주소 그대로 · </>}
@@ -354,7 +366,6 @@ export function ProjectItem({
         </form>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-4 text-caption">
-          <Link className="font-semibold text-ink hover:text-accent" href={`/projects/${encodeURIComponent(project.id)}`}>모니터링 · 거점·트래픽</Link>
           <button
             type="button"
             onClick={() => {
