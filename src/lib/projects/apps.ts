@@ -74,7 +74,7 @@ export async function cancelHome(appName: string) {
     throw new ApiError(409, "NO_AGENT", "이 앱을 배포한 에이전트를 찾지 못했어요.");
   if (response.status === 409) {
     const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new ApiError(409, "AGENT_UNAVAILABLE", agentMessage(body?.message));
+    throw agentError(body?.message);
   }
   if (!response.ok) {
     console.error(`builder home cancel ${appName}: ${response.status} ${await response.text()}`);
@@ -118,7 +118,7 @@ export async function sendBurst(appName: string, enabled: boolean, cloudPercent:
     throw new ApiError(409, "NO_AGENT", "이 앱을 배포한 에이전트를 찾지 못했어요. 다시 배포해 주세요.");
   if (response.status === 409) {
     const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new ApiError(409, "AGENT_UNAVAILABLE", agentMessage(body?.message));
+    throw agentError(body?.message);
   }
   if (!response.ok) {
     console.error(`builder burst ${appName}: ${response.status} ${await response.text()}`);
@@ -126,10 +126,20 @@ export async function sendBurst(appName: string, enabled: boolean, cloudPercent:
   }
 }
 
-function agentMessage(message: string | undefined) {
+/**
+ * builder 가 에이전트 문제로 거절한 이유 → 화면 문구. 연결이 끊긴 경우만 AGENT_OFFLINE 이라 화면이 다시 붙으면 지운다.
+ * 그 밖의 이유는 builder 문구를 그대로 보인다 (모두 "연결 안 됨"으로 바꾸면 진짜 이유가 가려진다)
+ */
+function agentError(message: string | undefined) {
   if (message?.includes("최신 이미지"))
-    return "에이전트가 예전 판이에요. 연결 명령으로 에이전트를 다시 실행해 주세요.";
-  return "내 PC 에이전트가 연결돼 있지 않아요.";
+    return new ApiError(409, "AGENT_OUTDATED", "에이전트가 예전 판이에요. 연결 명령으로 에이전트를 다시 실행해 주세요.");
+  if (!message || message.includes("연결돼 있지 않"))
+    return new ApiError(
+      409,
+      "AGENT_OFFLINE",
+      "그 순간 내 PC 에이전트가 배포 서버와 끊겨 있었어요. 다시 붙으면 다시 눌러 주세요.",
+    );
+  return new ApiError(409, "AGENT_REJECTED", `에이전트가 거절했어요: ${message}`);
 }
 
 /**

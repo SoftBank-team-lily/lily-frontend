@@ -260,7 +260,11 @@ export async function startHomeMove(
   assertIdle(row);
   const live = await burstStatus(row.app_name);
   if (!live?.connected)
-    throw new ApiError(409, "AGENT_UNAVAILABLE", "내 PC 에이전트가 연결돼 있지 않아요.");
+    throw new ApiError(
+      409,
+      "AGENT_OFFLINE",
+      "그 순간 내 PC 에이전트가 배포 서버와 끊겨 있었어요. 다시 붙으면 다시 눌러 주세요.",
+    );
   if (!live.supported || !live.state?.movable)
     throw new ApiError(409, "NOT_MOVABLE", "이 에이전트는 거점을 옮길 수 없어요. 연결 명령으로 에이전트를 다시 실행해 주세요.");
   if (live.state.home.startsWith("MOVING"))
