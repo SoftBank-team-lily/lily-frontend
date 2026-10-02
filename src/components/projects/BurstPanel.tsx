@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { projectRequest, ProjectError } from "@/lib/projects/client";
-import { burstBlocker, burstSummary, homeLabels } from "@/lib/projects/burst";
+import { burstBlocker, burstSummary, databaseMoveOffer, homeLabels } from "@/lib/projects/burst";
 import type { Project, ProjectBurst } from "@/lib/projects/types";
 import { Button } from "@/components/ui/Button";
 
@@ -13,6 +13,7 @@ const COMMIT_MS = 500;
  * 온프레미스 앱의 클라우드 버스팅과 거점.
  * 켜면 클라우드에 대기 Pod 1대를 두고, 슬라이더 비율만큼 요청을 클라우드로 보낸다 (0% 면 넘칠 때만).
  * 거점 전환은 공개 주소(CNAME) 자체를 클라우드로 옮긴다. 내 PC 가 꺼져도 주소가 산다.
+ * DB 가 출발 쪽(클라우드로 갈 때 내 PC, 돌아올 때 RDS)에 있으면 DB 도 옮길지 고르게 한다.
  */
 export function BurstPanel({
   project,
@@ -73,14 +74,15 @@ export function BurstPanel({
       if (value !== burst.cloudPercent) void save(true, value);
     }, COMMIT_MS);
   }
-  const move = (target: "cloud" | "onprem") =>
+  const move = (target: "cloud" | "onprem", migrateDatabase: boolean) =>
     send(() =>
       projectRequest<Project>(`/api/projects/${project.id}/home`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ home: target }),
+        body: JSON.stringify({ home: target, migrateDatabase }),
       }),
     ).then(() => setConfirmHome(null));
+  const offer = confirmHome ? databaseMoveOffer(live, confirmHome) : false;
 
   return (
     <section className="mt-4 rounded-xl border border-line p-4 text-caption" aria-label="클라우드 버스팅">
@@ -146,8 +148,11 @@ export function BurstPanel({
               </button>
             )}
           </div>
+          {live?.databaseMode === "local" || live?.databaseMode === "cloud" ? (
+            <p className="mt-1 text-mute">DB · {live.databaseMode === "local" ? "내 PC" : "클라우드(RDS)"}</p>
+          ) : null}
           {live?.homeEvent && <p className="mt-1 break-words text-mute">최근: {live.homeEvent}</p>}
-          {confirmHome && (
+          {confirmHome && !offer && (
             <div className="mt-3 rounded-xl border border-line p-3">
               <p className="text-ink">
                 {confirmHome === "cloud"
@@ -155,10 +160,40 @@ export function BurstPanel({
                   : "내 PC 에 앱을 다시 띄우고 공개 주소를 내 PC 로 되돌려요. 실패하면 클라우드에 남아요."}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button className="h-10" disabled={busy} onClick={() => void move(confirmHome)}>
+                <Button className="h-10" disabled={busy} onClick={() => void move(confirmHome, false)}>
                   {busy ? "요청 중…" : "옮기기"}
                 </Button>
                 <Button variant="ghost" disabled={busy} onClick={() => setConfirmHome(null)}>
+                  취소
+                </Button>
+              </div>
+            </div>
+          )}
+          {confirmHome && offer && (
+            <div className="mt-3 rounded-xl border border-line p-3" role="group" aria-label="DB 도 옮길까요">
+              <p className="text-ink">
+                {confirmHome === "cloud"
+                  ? "이 앱의 DB 는 지금 내 PC 에 있어요. DB 가 PC 에 남으면 PC 를 끌 때 앱도 멈춰요."
+                  : "이 앱의 DB 는 지금 클라우드(RDS)에 있어요."}
+              </p>
+              <div className="mt-3 grid gap-2">
+                <Button className="h-auto min-h-10 py-2 text-left" disabled={busy} onClick={() => void move(confirmHome, true)}>
+                  {confirmHome === "cloud" ? "DB 를 클라우드(RDS)로 옮기고 전환" : "DB 를 내 PC 로 다시 옮기고 전환"}
+                </Button>
+                <p className="px-1 text-mute">
+                  {confirmHome === "cloud"
+                    ? "PC 를 꺼도 앱과 데이터가 살아 있어요. 옮기는 동안 잠깐 앱이 응답하지 않아요."
+                    : "클라우드에 있는 동안 바뀐 데이터·스키마를 내 PC DB 에 덮어써요. 옮기는 동안 잠깐 앱이 응답하지 않아요."}
+                </p>
+                <Button variant="ghost" className="h-auto min-h-10 py-2 text-left" disabled={busy} onClick={() => void move(confirmHome, false)}>
+                  {confirmHome === "cloud" ? "DB 는 내 PC 에 두고 전환" : "DB 는 RDS 에 두고 전환"}
+                </Button>
+                <p className="px-1 text-mute">
+                  {confirmHome === "cloud"
+                    ? "PC 의 DB 를 터널로 써요. PC 가 꺼지면 앱도 멈춰요."
+                    : "내 PC 앱이 터널로 RDS 를 써요."}
+                </p>
+                <Button variant="ghost" className="h-10" disabled={busy} onClick={() => setConfirmHome(null)}>
                   취소
                 </Button>
               </div>

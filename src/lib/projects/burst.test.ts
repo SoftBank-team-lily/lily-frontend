@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { burstBlocker, burstChanging, burstSummary } from "./burst";
+import { burstBlocker, burstChanging, burstSummary, databaseMoveOffer } from "./burst";
 import type { BurstLive, ProjectBurst } from "./types";
 
 const live: BurstLive = {
@@ -22,6 +22,23 @@ const burst = (value: Partial<ProjectBurst>, state: Partial<BurstLive> | null = 
   agent: "connected",
   live: state === null ? null : { ...live, ...state },
   ...value,
+});
+
+describe("거점 전환 DB 이전 선택지", () => {
+  it("출발 쪽에 DB 가 있을 때만 묻는다", () => {
+    const movable = { ...live, databaseMovable: true };
+    expect(databaseMoveOffer({ ...movable, databaseMode: "local" }, "cloud")).toBe(true);
+    expect(databaseMoveOffer({ ...movable, databaseMode: "local" }, "onprem")).toBe(false);
+    expect(databaseMoveOffer({ ...movable, databaseMode: "cloud" }, "onprem")).toBe(true);
+    expect(databaseMoveOffer({ ...movable, databaseMode: "cloud" }, "cloud")).toBe(false);
+    expect(databaseMoveOffer({ ...movable, databaseMode: "external" }, "cloud")).toBe(false);
+  });
+
+  it("예전 에이전트나 옮길 수 없는 DB 면 묻지 않는다", () => {
+    expect(databaseMoveOffer({ ...live, databaseMode: "local" }, "cloud")).toBe(false);
+    expect(databaseMoveOffer({ ...live, databaseMode: "local", databaseMovable: false }, "cloud")).toBe(false);
+    expect(databaseMoveOffer(null, "cloud")).toBe(false);
+  });
 });
 
 describe("버스팅 표시", () => {

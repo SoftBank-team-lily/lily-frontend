@@ -9,8 +9,9 @@ export async function POST(request: Request, context: Context) {
   try {
     const user = await requireUser(request, true);
     await limitWrites(user.id, "apps", 10);
-    const { home } = validate(homeSchema, await readJson(request));
-    return json(await startHomeMove(user.id, validate(idSchema, (await context.params).id), home), 202);
+    const { home, migrateDatabase } = validate(homeSchema, await readJson(request));
+    const id = validate(idSchema, (await context.params).id);
+    return json(await startHomeMove(user.id, id, home, migrateDatabase ?? false), 202);
   } catch (error) {
     return apiError(error);
   }
