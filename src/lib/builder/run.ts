@@ -9,6 +9,11 @@
 //   (비밀값 생성, 기본값, 외부 서비스 키는 unset, 포트·헬스 경로·DB·앱 폴더). 최대 MAX_AUTO_FIX 번,
 //   같은 값으로 또 실패하면 그 전에 멈추고 화면이 원인과 입력 칸을 보인다
 //
+// 클라우드 앱을 내 PC 로 옮기는 배포(move):
+//   DB 를 내 PC 로 옮기면 쓰기를 막으려고 클라우드를 먼저 내린다(freeze) → 같은 앱 이름으로 에이전트에 배포
+//   → 성공하면 Ingress 를 내 PC 로 넘기고 클라우드 주소로 확인한 뒤 클라우드를 내린다 (finishMove)
+//   → 실패하면 Ingress·클라우드를 되돌린다 (cancelMove). 이 배포는 자동으로 고쳐 다시 보내지 않는다
+//
 // 상태는 recordEvent 로만 바꾼다 (전환 규칙을 그대로 따른다).
 
 import type { Diagnosis } from "@/lib/projects/types";
@@ -21,7 +26,13 @@ export type Pending = {
   /** 온프레미스 에이전트. onprem 인데 없으면 보내지 않고 failed */
   agentKey: string | null;
   settings?: DeploySettings;
+  /** 고정한 앱 이름 (내 PC 로 옮긴 프로젝트). 없으면 레포 이름으로 정한다 */
+  appName?: string | null;
+  /** 클라우드 앱을 내 PC 로 옮기는 배포 */
+  move?: Move | null;
 };
+/** database: 옮길 때 DB 위치 (DB 없는 앱은 null). local 이면 RDS 데이터를 내 PC DB 로 옮긴다 */
+export type Move = { database: "cloud" | "local" | null };
 /** message: builder 마지막 로그에서 뽑은 결과 한 줄 (실패 이유) */
 export type BuildState = {
   status: string;
@@ -44,7 +55,11 @@ export type Active = {
   deploymentId: string;
   status: "queued" | "running";
   buildId: string;
+  /** 클라우드 앱을 내 PC 로 옮기는 배포. appName 은 builder 로 보낸 앱 이름 */
+  move?: (Move & { appName: string }) | null;
 };
+/** 옮기기 마무리 결과. url: 그대로 쓰는 클라우드 주소 */
+export type MoveOutcome = { ok: true; url: string } | { ok: false; message: string };
 export type FinalStatus = "succeeded" | "failed";
 
 export class BuilderRejected extends Error {}
@@ -62,6 +77,8 @@ export type DeploySettings = {
   databaseLocation?: "local" | "external" | "cloud" | null;
   /** external 일 때 DB 주소 */
   databaseUrl?: string | null;
+  /** local 일 때 같은 앱 이름의 클라우드 RDS 데이터를 내 PC DB 로 옮긴다 (클라우드 앱을 옮길 때) */
+  importDatabase?: boolean;
 };
 
 export type RunDeps = {
@@ -96,6 +113,12 @@ export type RunDeps = {
     deploymentId: string,
     status: "running" | FinalStatus,
   ): Promise<void>;
+  /** 옮기기 전 클라우드 쓰기를 막는다 (앱을 내린다). DB 를 내 PC 로 옮길 때만 */
+  freezeCloud?(appName: string): Promise<void>;
+  /** 내 PC 배포가 끝났다: Ingress 를 내 PC 로 넘기고 확인한 뒤 클라우드를 내린다. 실패하면 되돌린다 */
+  finishMove?(deploymentId: string, move: Move & { appName: string }, onPremUrl: string | null): Promise<MoveOutcome>;
+  /** 내 PC 배포가 실패했다: 내려 둔 클라우드를 다시 띄운다 */
+  cancelMove?(move: Move & { appName: string }): Promise<void>;
   /** 등록할 수 있는 레포 소유자. 비어 있으면 모두 */
   allowedOwners: string[];
   maxActive: number;
@@ -120,6 +143,10 @@ export async function runOnce(deps: RunDeps) {
       // queued 에서 바로 succeeded 로는 바꿀 수 없다. running 을 먼저 기록한다
       if (active.status === "queued")
         await deps.event(active.deploymentId, "running");
+      if (active.move && result) {
+        await settleMove(deps, active, active.move, result, state, log);
+        continue;
+      }
       if (result === "succeeded" && state?.url)
         await deps.saveResult(active.deploymentId, { url: state.url });
       if (result === "failed")
@@ -149,12 +176,15 @@ export async function runOnce(deps: RunDeps) {
   if (slots <= 0) return;
   for (const pending of await deps.pending(slots)) {
     // 에이전트의 앱 이름은 31자까지다 (lily-on-premise)
-    const app = appName(
-      pending.repo,
-      pending.projectId,
-      pending.target === "onprem" ? 24 : 40,
-      pending.settings?.rootDir,
-    );
+    const app =
+      pending.appName ??
+      appName(
+        pending.repo,
+        pending.projectId,
+        pending.target === "onprem" ? 24 : 40,
+        pending.settings?.rootDir,
+      );
+    const freezing = pending.move?.database === "local";
     const fail = (reason: string) =>
       safeFail(deps, pending.deploymentId, app, reason, log);
     if (!allowed(pending.repo, deps.allowedOwners)) {
@@ -166,6 +196,8 @@ export async function runOnce(deps: RunDeps) {
       continue;
     }
     try {
+      // DB 를 옮기는 동안 클라우드에 쓰기가 들어오면 그 데이터는 내 PC 로 가지 않는다. 먼저 내린다
+      if (freezing) await deps.freezeCloud?.(app);
       const buildId = await deps.startBuild(
         `https://github.com/${pending.repo}`,
         app,
@@ -177,12 +209,59 @@ export async function runOnce(deps: RunDeps) {
       await deps.event(pending.deploymentId, "running");
     } catch (error) {
       if (error instanceof BuilderRejected) {
+        if (pending.move) await safeCancel(deps, { ...pending.move, appName: app }, log);
         await fail(`배포 서버가 요청을 거절했어요: ${error.message}`);
       } else {
         // builder 나 DB 가 잠깐 안 될 때. 다음 주기에 다시 보낸다
         log(`배포 ${pending.deploymentId} 시작 실패: ${message(error)}`);
       }
     }
+  }
+}
+
+/** 옮기는 배포의 끝: 성공이면 Ingress 를 넘기고 확인, 실패면 클라우드를 되돌린다 */
+async function settleMove(
+  deps: RunDeps,
+  active: Active,
+  move: Move & { appName: string },
+  result: FinalStatus,
+  state: BuildState | null,
+  log: (message: string) => void,
+) {
+  if (result === "succeeded") {
+    const outcome = deps.finishMove
+      ? await deps.finishMove(active.deploymentId, move, state?.url ?? null)
+      : ({ ok: false, message: "옮기기를 마무리할 수 없어요." } as const);
+    if (outcome.ok) {
+      await deps.saveResult(active.deploymentId, { url: outcome.url });
+      await deps.event(active.deploymentId, "succeeded");
+      log(`배포 ${active.deploymentId}: 내 PC 로 옮겼어요 (${move.appName})`);
+      return;
+    }
+    await deps.saveResult(active.deploymentId, { message: outcome.message });
+    await deps.event(active.deploymentId, "failed");
+    log(`배포 ${active.deploymentId}: 옮기기 실패 (${outcome.message})`);
+    return;
+  }
+  await safeCancel(deps, move, log);
+  await deps.saveResult(active.deploymentId, {
+    message: `내 PC 배포에 실패해서 클라우드에 그대로 두었어요. ${
+      state?.diagnosis?.cause ?? state?.message ?? ""
+    }`.trim(),
+    diagnosis: state?.diagnosis ?? null,
+  });
+  await deps.event(active.deploymentId, "failed");
+}
+
+async function safeCancel(
+  deps: RunDeps,
+  move: Move & { appName: string },
+  log: (message: string) => void,
+) {
+  try {
+    await deps.cancelMove?.(move);
+  } catch (error) {
+    log(`${move.appName} 클라우드 되돌리기 실패: ${message(error)}`);
   }
 }
 
@@ -275,6 +354,7 @@ export function buildSettings(settings: DeploySettings | undefined) {
     ...(settings.databaseLocation === "external" && settings.databaseUrl
       ? { databaseUrl: settings.databaseUrl }
       : {}),
+    ...(settings.databaseLocation === "local" && settings.importDatabase ? { importDatabase: true } : {}),
   };
 }
 

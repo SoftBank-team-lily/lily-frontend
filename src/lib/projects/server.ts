@@ -9,13 +9,15 @@ import type {
   DeploymentStatus,
   DeployTarget,
   DeploySettings,
+  DatabaseChoice,
   DatabaseLocation,
   Diagnosis,
   ProjectEntry,
 } from "./types";
 import type { ProjectFix, ProjectUpdate } from "./schema";
 import { autoFixAttempt } from "@/lib/builder/run";
-import { appAction, clusterApps, runtimeOf } from "./apps";
+import { appAction, clusterApps, routeUpstream, runtimeOf } from "./apps";
+import { getAgent } from "@/lib/agents/server";
 import type { AppRuntime } from "./types";
 
 type Row = {
@@ -40,16 +42,20 @@ type Row = {
   diagnosis: Diagnosis | null;
   request_key: string | null;
   app_name: string | null;
+  database: DatabaseChoice | null;
+  fixed_app_name: string | null;
+  move: "onprem" | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.database_location, p.root_dir, p.branch, p.port, p.health_path,
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.database_location, p.database, p.app_name AS fixed_app_name,
+  p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
   ARRAY(SELECT key FROM jsonb_each_text(p.env) WHERE value='unset' ORDER BY 1) AS unset_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
-  r.diagnosis, d.request_key,
+  r.diagnosis, d.request_key, d.move,
   (SELECT r2.app_name FROM builder_runs r2 JOIN deployments d2 ON d2.id=r2.deployment_id
     WHERE d2.project_id=p.id AND r2.app_name<>'' ORDER BY r2.created_at DESC LIMIT 1) AS app_name
   FROM projects p LEFT JOIN LATERAL (
-    SELECT id, status, request_key FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
+    SELECT id, status, request_key, move FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
   ) d ON true
   LEFT JOIN builder_runs r ON r.deployment_id=d.id`;
 /** @param apps 클러스터 앱 상태. 넘기지 않으면 runtime 은 null (builder 를 부르지 않는다) */
@@ -60,6 +66,8 @@ function project(row: Row, apps: Map<string, AppRuntime> | null = null): Project
     name: row.name,
     target: row.target,
     databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
+    database: row.database ?? null,
+    movedFromCloud: row.target === "onprem" && row.fixed_app_name !== null,
     rootDir: row.root_dir,
     branch: row.branch,
     port: row.port,
@@ -80,6 +88,7 @@ function project(row: Row, apps: Map<string, AppRuntime> | null = null): Project
             diagnosis: row.diagnosis ?? null,
             autoFixed: row.request_key?.startsWith(AUTO_FIX_KEY) ?? false,
             autoFixAttempt: autoFixAttempt(row.request_key),
+            move: row.move ?? null,
           }
         : null,
   };
@@ -170,6 +179,88 @@ export async function deleteProject(ownerId: string, id: string, database: boole
   await db.query("DELETE FROM projects WHERE id=$1 AND owner_id=$2", [id, ownerId]);
   return { id, removed };
 }
+/** 에이전트의 앱 이름 규칙 (lily-on-premise DeployJob). 클라우드 앱 이름이 이보다 길면 내 PC 로 옮길 수 없다 */
+const AGENT_APP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
+/** 클라우드로 되돌릴 때 클러스터 앱이 다 뜰 때까지 기다리는 시간 */
+const START_WAIT_MS = 120_000;
+
+/**
+ * 클라우드 앱을 내 PC 로 옮기는 배포를 만든다. 실행기가 같은 앱 이름으로 에이전트에 배포하고,
+ * 끝나면 클러스터 Ingress 를 내 PC 로 넘긴 뒤 클라우드를 내린다 (src/lib/builder/worker.ts finishMove).
+ *
+ * @param database DB 있는 앱의 DB 위치. cloud: RDS 그대로, local: RDS 데이터를 내 PC DB 로 옮긴다 (postgres 만)
+ */
+export async function moveToOnPrem(
+  ownerId: string,
+  id: string,
+  database: "cloud" | "local" | null,
+) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud")
+    throw new ApiError(409, "ALREADY_ONPREM", "이미 내 PC 에서 돌고 있어요.");
+  assertIdle(row);
+  if (row.status !== "succeeded" || !row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "클라우드 배포가 끝난 앱만 옮길 수 있어요.");
+  if (!AGENT_APP_NAME.test(row.app_name))
+    throw new ApiError(
+      409,
+      "NAME_TOO_LONG",
+      "앱 이름이 31자를 넘어 내 PC 로 옮길 수 없어요. 짧은 이름으로 다시 등록해 주세요.",
+    );
+  const agent = await getAgent(ownerId);
+  if (!agent?.connected)
+    throw new ApiError(409, "NO_AGENT", "내 PC 에이전트를 먼저 연결해 주세요.");
+  const hasDatabase = row.database === "postgres" || row.database === "mysql";
+  const location = hasDatabase ? (database ?? "cloud") : null;
+  if (location === "local" && row.database !== "postgres")
+    throw new ApiError(400, "UNSUPPORTED_DATABASE", "DB 를 내 PC 로 옮기는 건 PostgreSQL 만 돼요.");
+  if (location === "local" && !agent.database)
+    throw new ApiError(409, "NO_TUNNEL", "에이전트에 DB 터널이 없어 RDS 데이터를 가져올 수 없어요.");
+  await db.query("UPDATE projects SET app_name=$3 WHERE id=$1 AND owner_id=$2", [
+    id,
+    ownerId,
+    row.app_name,
+  ]);
+  await db.query(
+    `INSERT INTO deployments(id, project_id, request_key, move, move_database)
+    VALUES ($1,$2,$3,'onprem',$4)`,
+    [randomUUID(), id, `move-onprem-${randomUUID()}`, location],
+  );
+  return getProject(ownerId, id);
+}
+
+/**
+ * 내 PC 로 옮긴 앱을 클라우드로 되돌린다: 클러스터 앱을 다시 띄우고, 다 뜨면 Ingress 를 클러스터로 돌린다.
+ * DB 를 내 PC 로 옮긴 앱은 데이터가 PC 에만 있어 되돌리지 않는다.
+ */
+export async function moveToCloud(ownerId: string, id: string) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "onprem" || !row.fixed_app_name)
+    throw new ApiError(409, "NOT_MOVED", "클라우드에서 옮겨 온 앱만 되돌릴 수 있어요.");
+  assertIdle(row);
+  if (row.database_location === "local")
+    throw new ApiError(
+      409,
+      "DATABASE_ON_PC",
+      "DB 가 내 PC 에 있어서 클라우드로 되돌리면 데이터가 따라가지 않아요.",
+    );
+  const app = row.fixed_app_name;
+  if (!(await appAction(app, "start")))
+    throw new ApiError(409, "NOT_RUNNING", "클러스터에 이 앱이 없어요. 클라우드로 다시 배포해 주세요.");
+  const deadline = Date.now() + START_WAIT_MS;
+  while ((await clusterApps())?.get(app)?.state !== "running") {
+    if (Date.now() > deadline)
+      throw new ApiError(504, "START_TIMEOUT", "클라우드 앱이 2분 안에 뜨지 않았어요. 내 PC 가 계속 받아요.");
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  await routeUpstream(app, null);
+  await db.query(
+    "UPDATE projects SET target='cloud', database_location=NULL WHERE id=$1 AND owner_id=$2",
+    [id, ownerId],
+  );
+  return getProject(ownerId, id, true);
+}
+
 /** 실행기가 실패를 자동으로 고쳐 다시 보낸 배포의 request_key 앞부분 */
 export const AUTO_FIX_KEY = "auto-fix-";
 
@@ -499,6 +590,7 @@ export async function getProjectEntry(
         diagnosis: result.latestDeployment.diagnosis,
         autoFixed: result.latestDeployment.autoFixed,
         autoFixAttempt: result.latestDeployment.autoFixAttempt,
+        move: result.latestDeployment.move,
       },
     },
     destination,
