@@ -124,6 +124,14 @@ export type BurstLive = {
   homeBuild?: string;
   /** 지금 취소하면 출발 거점으로 되돌린다 (주소를 바꾸기 전) */
   homeCancellable?: boolean;
+  /** 내 PC 앱 컨테이너 CPU (코어 하나 기준 %). 예전 에이전트거나 모르면 없다 */
+  homeCpuPercent?: number | null;
+  homeMemoryMiB?: number | null;
+  /** 컨테이너 한도(없으면 PC 메모리) 대비 % */
+  homeMemoryPercent?: number | null;
+  /** 내 PC 가 처리한 요청의 최근 5분 p95 (ms) */
+  homeP95Ms?: number | null;
+  localLimit?: number;
 };
 /** 에이전트가 기다리는 클라우드 빌드의 진행 (builder 빌드 기록) */
 export type BuildProgress = {

@@ -5,14 +5,11 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthNav } from "@/components/auth/AuthNav";
 import { AccountForm } from "@/components/auth/AccountForm";
 import { PasswordForm } from "@/components/auth/PasswordForm";
-import { listProjects } from "@/lib/projects/server";
-import { ProjectList } from "@/components/projects/ProjectList";
 import { SessionGuard } from "@/components/auth/SessionGuard";
 
 export default async function AccountPage() {
   const user = await getUser();
   if (!user) redirect("/login?next=%2Faccount");
-  const projects = await listProjects(user.id);
   return (
     <AuthShell
       title="내 계정"
@@ -21,7 +18,9 @@ export default async function AccountPage() {
     >
       <SessionGuard key={user.id} userId={user.id}>
         <AccountForm key={`account:${user.id}`} user={user} />
-        <ProjectList key={`projects:${user.id}`} initialPage={projects} />
+        <Link href="/projects" className="mt-8 inline-block text-control text-ink underline">
+          내 프로젝트 보기
+        </Link>
         <section
           className="mt-10 border-t border-line pt-8"
           aria-labelledby="password-title"

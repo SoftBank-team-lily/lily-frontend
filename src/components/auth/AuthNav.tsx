@@ -46,6 +46,9 @@ export function AuthNav({ user }: { user: User | null }) {
     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-caption text-mute">
       {viewer ? (
         <>
+          <Link href="/projects" className="hover:text-ink">
+            내 프로젝트
+          </Link>
           <Link href="/account" className="hover:text-ink">
             내 계정
           </Link>
