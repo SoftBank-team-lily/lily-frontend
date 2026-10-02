@@ -22,7 +22,6 @@ import {
   cancelHome,
   clusterApps,
   moveHome,
-  routeUpstream,
   runtimeOf,
   sendBurst,
   type BurstStatus,
@@ -359,12 +358,11 @@ export async function deleteProject(ownerId: string, id: string, database: boole
 }
 /** 에이전트의 앱 이름 규칙 (lily-on-premise DeployJob). 클라우드 앱 이름이 이보다 길면 내 PC 로 옮길 수 없다 */
 const AGENT_APP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
-/** 클라우드로 되돌릴 때 클러스터 앱이 다 뜰 때까지 기다리는 시간 */
-const START_WAIT_MS = 120_000;
 
 /**
- * 클라우드 앱을 내 PC 로 옮기는 배포를 만든다. 실행기가 같은 앱 이름으로 에이전트에 배포하고,
- * 끝나면 클러스터 Ingress 를 내 PC 로 넘긴 뒤 클라우드를 내린다 (src/lib/builder/worker.ts finishMove).
+ * 클라우드 앱을 내 PC 로 옮기는 배포를 만든다. 실행기가 같은 앱 이름으로 에이전트에 배포하면 에이전트가 공개 주소
+ * {앱}.{존} 의 CNAME 을 ALB 에서 터널로 바꾸고, 확인한 뒤 클라우드를 내린다 (src/lib/builder/worker.ts finishMove).
+ * 옮긴 앱은 온프레미스 앱과 같다. 다시 클라우드로 갈 때는 거점 전환(startHomeMove)을 쓴다
  *
  * @param database DB 있는 앱의 DB 위치. cloud: RDS 그대로, local: RDS 데이터를 내 PC DB 로 옮긴다 (postgres 만)
  */
@@ -405,38 +403,6 @@ export async function moveToOnPrem(
     [randomUUID(), id, `move-onprem-${randomUUID()}`, location],
   );
   return getProject(ownerId, id);
-}
-
-/**
- * 내 PC 로 옮긴 앱을 클라우드로 되돌린다: 클러스터 앱을 다시 띄우고, 다 뜨면 Ingress 를 클러스터로 돌린다.
- * DB 를 내 PC 로 옮긴 앱은 데이터가 PC 에만 있어 되돌리지 않는다.
- */
-export async function moveToCloud(ownerId: string, id: string) {
-  const row = await projectRow(ownerId, id);
-  if (row.target !== "onprem" || !row.fixed_app_name)
-    throw new ApiError(409, "NOT_MOVED", "클라우드에서 옮겨 온 앱만 되돌릴 수 있어요.");
-  assertIdle(row);
-  if (row.database_location === "local")
-    throw new ApiError(
-      409,
-      "DATABASE_ON_PC",
-      "DB 가 내 PC 에 있어서 클라우드로 되돌리면 데이터가 따라가지 않아요.",
-    );
-  const app = row.fixed_app_name;
-  if (!(await appAction(app, "start")))
-    throw new ApiError(409, "NOT_RUNNING", "클러스터에 이 앱이 없어요. 클라우드로 다시 배포해 주세요.");
-  const deadline = Date.now() + START_WAIT_MS;
-  while ((await clusterApps())?.get(app)?.state !== "running") {
-    if (Date.now() > deadline)
-      throw new ApiError(504, "START_TIMEOUT", "클라우드 앱이 2분 안에 뜨지 않았어요. 내 PC 가 계속 받아요.");
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
-  }
-  await routeUpstream(app, null);
-  await db.query(
-    "UPDATE projects SET target='cloud', database_location=NULL WHERE id=$1 AND owner_id=$2",
-    [id, ownerId],
-  );
-  return getProject(ownerId, id, true);
 }
 
 /** 실행기가 실패를 자동으로 고쳐 다시 보낸 배포의 request_key 앞부분 */

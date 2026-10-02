@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { appAction, routeUpstream } from "@/lib/projects/apps";
+import { appAction, appAddress, pointAddressToCloud } from "@/lib/projects/apps";
 import {
   AUTO_FIX_KEY,
   createDeployment,
@@ -22,7 +22,7 @@ import {
 // 서버 프로세스 안에서 주기적으로 runOnce 를 돌린다. src/instrumentation.ts 가 BUILDER_URL 이 있을 때만 켠다.
 
 const REGISTER_KEY = "builder:register";
-/** Ingress 를 내 PC 로 넘긴 뒤 클라우드 주소로 확인하는 시간 (ingress-nginx 반영 포함) */
+/** 공개 주소 CNAME 을 내 PC 터널로 바꾼 뒤 그 주소로 확인하는 시간 (Cloudflare 반영 포함) */
 const MOVE_PROBE_MS = 90_000;
 /** 확인한 뒤 클라우드를 내리기까지. 클라우드에서 처리 중이던 요청이 끝나게 둔다 */
 const MOVE_DRAIN_MS = 30_000;
@@ -272,32 +272,30 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
       await appAction(app, "stop");
     },
     async cancelMove(move) {
+      // 에이전트가 주소를 터널로 바꾼 뒤에 실패했을 수도 있다. ALB 로 두는 건 이미 그쪽이면 아무것도 안 한다
+      await pointAddressToCloud(move.appName).catch(() => false);
       // 클라우드는 DB 를 옮길 때만 내렸다
       if (move.database === "local") await appAction(move.appName, "start");
     },
     async finishMove(deploymentId, move, onPremUrl) {
       const fail = async (message: string) => {
-        await routeUpstream(move.appName, null).catch(() => false);
+        await pointAddressToCloud(move.appName).catch(() => false);
         if (move.database === "local") await appAction(move.appName, "start").catch(() => false);
         return { ok: false as const, message };
       };
-      const host = onPremUrl ? safeHost(onPremUrl) : null;
-      if (!host) return fail("내 PC 공개 주소를 받지 못해 클라우드에 그대로 두었어요.");
-      const found = await db.query<{ project_id: string; url: string | null; health_path: string | null }>(
-        `SELECT d.project_id, p.health_path,
-          (SELECT r.url FROM builder_runs r JOIN deployments d2 ON d2.id=r.deployment_id
-            WHERE d2.project_id=d.project_id AND d2.status='succeeded' AND d2.move IS NULL AND r.url IS NOT NULL
-            ORDER BY r.created_at DESC LIMIT 1) AS url
-        FROM deployments d JOIN projects p ON p.id=d.project_id WHERE d.id=$1`,
+      if (!onPremUrl || !safeHost(onPremUrl)) return fail("내 PC 공개 주소를 받지 못해 클라우드에 그대로 두었어요.");
+      // 에이전트는 로컬 헬스·판정을 통과한 뒤에만 같은 주소({앱}.{존})의 CNAME 을 ALB 에서 터널로 바꾼다
+      const address = await appAddress(move.appName).catch(() => null);
+      if (address?.home !== "ONPREM")
+        return fail("공개 주소를 내 PC 로 바꾸지 못해 클라우드에 그대로 두었어요.");
+      const found = await db.query<{ project_id: string; health_path: string | null }>(
+        "SELECT d.project_id, p.health_path FROM deployments d JOIN projects p ON p.id=d.project_id WHERE d.id=$1",
         [deploymentId],
       );
       const row = found.rows[0];
-      if (!row?.url) return fail("클라우드 주소를 찾지 못해 클라우드에 그대로 두었어요.");
-      if (!(await routeUpstream(move.appName, host)))
-        return fail("클러스터에 이 앱의 Ingress 가 없어 옮기지 못했어요.");
-      // Ingress 반영 전에는 클라우드 Pod 가 답한다. Cloudflare 를 거쳐 온 응답(cf-ray)이어야 내 PC 다
-      if (!(await reachesOnPrem(row.url, row.health_path)))
-        return fail("클라우드 주소로 내 PC 앱에 닿지 않아 클라우드로 되돌렸어요.");
+      if (!row) return fail("프로젝트를 찾지 못해 클라우드에 그대로 두었어요.");
+      if (!(await reachable(onPremUrl, row.health_path)))
+        return fail("공개 주소로 내 PC 앱에 닿지 않아 클라우드로 되돌렸어요.");
       await db.query(
         "UPDATE projects SET target='onprem', database_location=$2 WHERE id=$1",
         [row.project_id, move.database],
@@ -307,7 +305,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           console.warn(`[builder] ${move.appName} 클라우드 내리기 실패`, error),
         );
       }, MOVE_DRAIN_MS).unref();
-      return { ok: true as const, url: row.url };
+      return { ok: true as const, url: onPremUrl };
     },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다
@@ -324,9 +322,9 @@ function safeHost(url: string) {
   }
 }
 
-/** 클라우드 주소로 요청해서 Cloudflare 터널(내 PC)을 거친 응답이 올 때까지 */
-async function reachesOnPrem(cloudUrl: string, healthPath: string | null) {
-  const target = new URL(healthPath || "/", cloudUrl).toString();
+/** 공개 주소가 5xx 없이 답할 때까지. CNAME 을 바꾼 직후 몇 초는 Cloudflare 가 아직 반영하지 못한다 */
+async function reachable(url: string, healthPath: string | null) {
+  const target = new URL(healthPath && healthPath !== "tcp" ? healthPath : "/", url).toString();
   const deadline = Date.now() + MOVE_PROBE_MS;
   while (Date.now() < deadline) {
     try {
@@ -335,7 +333,7 @@ async function reachesOnPrem(cloudUrl: string, healthPath: string | null) {
         cache: "no-store",
         signal: AbortSignal.timeout(10_000),
       });
-      if (response.status < 500 && response.headers.has("cf-ray")) return true;
+      if (response.status < 500) return true;
     } catch {
       // 다음에 다시
     }
