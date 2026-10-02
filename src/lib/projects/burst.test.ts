@@ -53,6 +53,8 @@ describe("버스팅 표시", () => {
     expect(burstSummary(burst({}, { phase: "IDLE", warm: true })).detail).toContain("준비");
     expect(burstSummary(burst({}, { enabled: false })).detail).toContain("보내는 중");
     expect(burstSummary(burst({}, { phase: "OFF", home: "CLOUD" })).detail).toContain("클라우드");
+    // 공개 주소가 클라우드면 분배 설정값(0%) 대신 실제로 클라우드가 다 받는다고 보인다
+    expect(burstSummary(burst({}, { enabled: false, home: "CLOUD" })).title).toContain("클라우드 100%");
   });
 
   it("에이전트를 쓸 수 없으면 이유를 알려 준다", () => {

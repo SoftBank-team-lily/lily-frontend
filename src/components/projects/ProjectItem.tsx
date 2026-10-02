@@ -7,6 +7,7 @@ import { FixPanel } from "./FixPanel";
 import { MovePanel } from "./MovePanel";
 import type { AppState, Project, DeploymentStatus } from "@/lib/projects/types";
 import { STAGES } from "@/lib/deploy/stages";
+import { placeBadge } from "@/lib/projects/burst";
 import { lastLine, stageIndex } from "@/lib/deploy/progress";
 import { AuthField } from "@/components/auth/AuthField";
 import { Button } from "@/components/ui/Button";
@@ -165,7 +166,10 @@ export function ProjectItem({
   }
   return (
     <li className="rounded-xl border border-line p-5">
-      <h3 className="break-words text-lead font-semibold">{project.name}</h3>
+      <PlaceBadgeView
+        badge={placeBadge(project, movingNow ? Math.min(99, Math.round(((step + 1) / STAGES.length) * 100)) : null)}
+      />
+      <h3 className="mt-2 break-words text-lead font-semibold">{project.name}</h3>
       <p className="mt-1 break-all text-caption text-mute">{project.repo}</p>
       <p className="mt-3 text-caption text-mute">
         {movingNow ? "클라우드 → 온프레미스 전환 중" : `${targetLabels[project.target]} 배포`} ·{" "}
@@ -488,5 +492,30 @@ export function ProjectItem({
         {error}
       </p>
     </li>
+  );
+}
+
+const badgeTone = {
+  cloud: "border-cloud text-cloud",
+  onprem: "border-onprem text-onprem",
+  moving: "border-warning text-warning",
+} as const;
+
+/** 지금 공개 주소를 받는 곳. 색만으로 구분하지 않게 글자와 진행 막대를 같이 둔다 */
+function PlaceBadgeView({ badge }: { badge: ReturnType<typeof placeBadge> }) {
+  const percent = badge.kind === "moving" ? badge.percent : null;
+  return (
+    <div className={`inline-flex flex-col gap-1 rounded-lg border px-3 py-1.5 ${badgeTone[badge.kind]}`} aria-live="polite">
+      <span className="text-control font-semibold">
+        {badge.kind === "cloud" ? "☁ " : badge.kind === "onprem" ? "🖥 " : "⇄ "}
+        {badge.label}
+        {percent !== null && ` · 약 ${percent}%`}
+      </span>
+      {percent !== null && (
+        <span className="block h-1 w-full overflow-hidden rounded-full bg-field" aria-hidden="true">
+          <span className="block h-full bg-warning transition-[width] duration-500" style={{ width: `${percent}%` }} />
+        </span>
+      )}
+    </div>
   );
 }

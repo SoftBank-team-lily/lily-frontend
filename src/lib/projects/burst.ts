@@ -3,13 +3,15 @@ import type { AppRuntime, BuildProgress, BurstLive, HomePhase, Project, ProjectB
 /** 버스팅 한 줄 요약: 꺼짐 · 대기(0%) · 분산 N% 와 지금 단계 */
 export function burstSummary(burst: ProjectBurst): { title: string; detail: string | null } {
   if (!burst.enabled) return { title: "꺼짐", detail: null };
-  const title = burst.cloudPercent === 0 ? "대기 (클라우드 0%)" : `분산 (클라우드 ${burst.cloudPercent}%)`;
   const live = burst.live;
+  // 공개 주소가 클라우드면 요청은 전부 클라우드로 간다. 분배 설정값은 내 PC 가 입구일 때만 뜻이 있다
+  if (live?.home === "CLOUD") return { title: "쉼 (공개 주소 클라우드 100%)", detail: "클라우드 → 온프레미스 전환 뒤에 다시 써요" };
+  const title = burst.cloudPercent === 0 ? "대기 (클라우드 0%)" : `분산 (클라우드 ${burst.cloudPercent}%)`;
   if (!live) return { title, detail: null };
   if (!live.enabled) return { title, detail: "에이전트에 설정을 보내는 중" };
   switch (live.phase) {
     case "OFF":
-      return { title, detail: live.home === "CLOUD" ? "거점이 클라우드라 쉬는 중" : "다음 배포부터 대기 배포해요" };
+      return { title, detail: "다음 배포부터 대기 배포해요" };
     case "STANDBY":
       return { title, detail: "클라우드에 대기 배포 중 (몇 분 걸려요)" };
     case "WARMING":
@@ -281,4 +283,22 @@ function podsLabel(pods: AppRuntime | null): string {
   if (pods.state === "absent") return "배포 없음";
   if (pods.replicas === 0) return "Pod 0대 (내려 둠)";
   return `Pod ${pods.ready}/${pods.replicas} 준비됨`;
+}
+
+/** 프로젝트 카드 맨 위 배지: 지금 공개 주소를 받는 곳. 전환 중이면 방향과 어림 % */
+export type PlaceBadge =
+  | { kind: "cloud" | "onprem"; label: string }
+  | { kind: "moving"; label: string; percent: number | null };
+
+/**
+ * @param moveDeploy 클라우드 앱을 내 PC 로 옮기는 배포가 도는 중이면 그 진행 (0~100)
+ */
+export function placeBadge(project: Project, moveDeploy: number | null): PlaceBadge {
+  if (moveDeploy !== null) return { kind: "moving", label: "클라우드 → 온프레미스 전환 중", percent: moveDeploy };
+  const home = activities(project.burst).find((activity) => activity.kind === "home");
+  if (home) return { kind: "moving", label: home.title, percent: home.percent };
+  if (project.target === "cloud") return { kind: "cloud", label: "클라우드" };
+  const live = project.burst?.live;
+  if (live?.home === "CLOUD") return { kind: "cloud", label: "클라우드" };
+  return { kind: "onprem", label: "온프레미스 (내 PC)" };
 }

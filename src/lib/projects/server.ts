@@ -92,9 +92,11 @@ async function burstOf(row: Row, live: BurstStatus | null): Promise<ProjectBurst
     return { ...desired, agent: "waiting", live: null };
   }
   const state = live.state;
-  // 거점을 옮기는 중에는 에이전트가 켜기·끄기를 받지 않는다. 끝난 뒤에 맞춘다
+  // 거점을 옮기는 중에는 에이전트가 켜기·끄기를 받지 않는다. 끝난 뒤에 맞춘다.
+  // 공개 주소가 클라우드면 켜기는 보내지 않는다 (에이전트도 거절한다). 끄기는 보낸다
   if (
     !state.home.startsWith("MOVING") &&
+    (state.home === "ONPREM" || !desired.enabled) &&
     (state.enabled !== desired.enabled || state.cloudPercent !== desired.cloudPercent)
   )
     await sendBurst(row.app_name, desired.enabled, desired.cloudPercent).catch(() => undefined);
@@ -238,6 +240,13 @@ export async function updateBurst(ownerId: string, id: string, input: BurstInput
       409,
       "MOVING",
       "공개 주소 전환 중이라 버스팅을 바꿀 수 없어요. 끝나거나 전환을 취소한 뒤 바꿔 주세요.",
+    );
+  // 버스팅은 내 PC 가 입구일 때만 쓴다. 공개 주소가 클라우드면 대기 배포가 끝날 때 그 Pod 를 내릴 수 있다
+  if (input.enabled && live?.state && live.state.home !== "ONPREM")
+    throw new ApiError(
+      409,
+      "HOME_CLOUD",
+      "공개 주소가 클라우드라 버스팅을 켤 수 없어요. 클라우드 → 온프레미스 전환 뒤에 켜 주세요.",
     );
   await db.query(
     "UPDATE projects SET burst_enabled=$3, burst_cloud_percent=$4 WHERE id=$1 AND owner_id=$2",
