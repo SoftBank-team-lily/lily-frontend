@@ -1,4 +1,4 @@
-import type { BuildProgress, BurstLive, HomePhase, ProjectBurst } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive, HomePhase, Project, ProjectBurst } from "./types";
 
 /** 버스팅 한 줄 요약: 꺼짐 · 대기(0%) · 분산 N% 와 지금 단계 */
 export function burstSummary(burst: ProjectBurst): { title: string; detail: string | null } {
@@ -37,6 +37,8 @@ export function burstBlocker(burst: ProjectBurst): string | null {
       return "에이전트 상태를 기다리는 중이에요.";
     case "unknown":
       return null;
+    case "other":
+      return `내 PC 에이전트가 지금 다른 앱(${burst.agentApp})을 돌리고 있어요. 에이전트는 앱 하나만 다뤄서 이 앱 상태를 받을 수 없어요.`;
     case "connected":
       return burst.live && !burst.live.available ? "플랫폼이 이 에이전트에 클라우드를 열어 주지 않았어요." : null;
   }
@@ -185,4 +187,98 @@ export function elapsed(since: number | null, now: number): string | null {
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   const minutes = Math.floor(seconds / 60);
   return minutes ? `${minutes}분 ${seconds % 60}초` : `${seconds}초`;
+}
+
+export type Overview = {
+  /** 공개 주소를 지금 받는 곳 */
+  home: { label: string; tone: "ink" | "warning" | "mute" };
+  pc: string;
+  cloud: string;
+  database: string;
+  burst: string;
+  /** 바로 손봐야 할 것. idle: 쓰이지 않는 클라우드 Pod (내릴 수 있다) */
+  warnings: { text: string; tone: "warning" | "danger"; action?: "stopCloud" }[];
+  /** 에이전트가 남긴 마지막 기록 */
+  recent: string[];
+};
+
+/** 온프레미스 앱의 지금 상태를 한눈에 (공개 주소가 어디서 받는지, 내 PC·클라우드에 뭐가 떠 있는지, 손볼 것) */
+export function overview(project: Pick<Project, "burst" | "cloudPods" | "databaseLocation">): Overview | null {
+  const burst = project.burst;
+  if (!burst) return null;
+  const live = burst.live;
+  const pods = project.cloudPods;
+  const home = live?.home ?? null;
+  const warnings: Overview["warnings"] = [];
+  const moving = home === "MOVING_TO_CLOUD" || home === "MOVING_TO_ONPREM";
+
+  const homeLabel = !live
+    ? { label: "확인 못 함", tone: "mute" as const }
+    : moving
+      ? { label: home === "MOVING_TO_CLOUD" ? "내 PC → 클라우드로 옮기는 중" : "클라우드 → 내 PC 로 옮기는 중", tone: "warning" as const }
+      : home === "CLOUD"
+        ? { label: "클라우드", tone: "ink" as const }
+        : home === "ONPREM"
+          ? { label: "내 PC", tone: "ink" as const }
+          : { label: "알 수 없음", tone: "warning" as const };
+
+  const pc =
+    burst.agent === "connected"
+      ? home === "CLOUD"
+        ? "에이전트 연결됨 · 이 앱은 쉬는 중 (공개 주소가 클라우드)"
+        : "에이전트 연결됨 · 이 앱 실행 중"
+      : burst.agent === "other"
+        ? `에이전트가 다른 앱(${burst.agentApp})을 돌리는 중`
+        : burst.agent === "offline"
+          ? "에이전트 연결 안 됨"
+          : burst.agent === "outdated"
+            ? "에이전트가 예전 판"
+            : burst.agent === "waiting"
+              ? "에이전트 상태를 기다리는 중"
+              : "확인 못 함";
+
+  const cloud = podsLabel(pods);
+  const database =
+    project.databaseLocation === "local"
+      ? "내 PC"
+      : project.databaseLocation === "cloud"
+        ? "클라우드(RDS)"
+        : project.databaseLocation === "external"
+          ? "기존 DB 서버"
+          : "없음";
+  const burstText = burstSummary(burst);
+
+  if (home === "CLOUD" && pods && pods.ready === 0)
+    warnings.push({ text: "공개 주소가 클라우드인데 준비된 클라우드 Pod 가 없어요. 앱이 응답하지 않을 수 있어요.", tone: "danger" });
+  if (home === "ONPREM" && !burst.enabled && pods && pods.replicas > 0)
+    warnings.push({
+      text: `클라우드 Pod ${pods.replicas}대가 쓰이지 않고 떠 있어요 (끊긴 옮기기나 꺼진 버스팅이 남긴 것).`,
+      tone: "warning",
+      action: "stopCloud",
+    });
+  if (burst.agent === "other")
+    warnings.push({
+      text: `내 PC 에이전트가 다른 앱(${burst.agentApp})을 돌리고 있어서 이 앱의 버스팅·옮기기를 쓸 수 없어요.`,
+      tone: "warning",
+    });
+  if (activities(burst).length > 1)
+    warnings.push({ text: "버스팅 대기 배포와 옮기기가 같이 돌고 있어요. 하나를 취소해 주세요.", tone: "danger" });
+
+  const recent = [live?.homeEvent, live?.event?.replace(/^\S+Z /, "")].filter((line): line is string => Boolean(line));
+  return {
+    home: homeLabel,
+    pc,
+    cloud,
+    database,
+    burst: burstText.detail ? `${burstText.title} · ${burstText.detail}` : burstText.title,
+    warnings,
+    recent,
+  };
+}
+
+function podsLabel(pods: AppRuntime | null): string {
+  if (!pods) return "확인 못 함";
+  if (pods.state === "absent") return "배포 없음";
+  if (pods.replicas === 0) return "Pod 0대 (내려 둠)";
+  return `Pod ${pods.ready}/${pods.replicas} 준비됨`;
 }

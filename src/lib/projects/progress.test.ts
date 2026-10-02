@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activities, burstLock, elapsed, homeLock } from "./burst";
+import { activities, burstLock, elapsed, homeLock, overview } from "./burst";
 import type { BurstLive, ProjectBurst } from "./types";
 
 const LIVE: BurstLive = {
@@ -86,5 +86,52 @@ describe("진행 중인 일 (버스팅 대기 배포·거점 전환)", () => {
     expect(elapsed(null, 10_000)).toBeNull();
     expect(elapsed(1_000, 46_000)).toBe("45초");
     expect(elapsed(1_000, 193_000)).toBe("3분 12초");
+  });
+});
+
+describe("지금 상태 한눈에", () => {
+  it("공개 주소가 어디서 받는지와 내 PC·클라우드·DB·버스팅을 쓴다", () => {
+    const view = overview({
+      burst: { ...burst({ home: "CLOUD", event: "2026-10-02T02:51:59Z park: home is cloud", homeEvent: "home: cloud" }) },
+      cloudPods: { state: "running", ready: 2, replicas: 2 },
+      databaseLocation: "cloud",
+    })!;
+    expect(view.home).toEqual({ label: "클라우드", tone: "ink" });
+    expect(view.pc).toContain("쉬는 중");
+    expect(view.cloud).toBe("Pod 2/2 준비됨");
+    expect(view.database).toBe("클라우드(RDS)");
+    expect(view.warnings).toEqual([]);
+    expect(view.recent).toEqual(["home: cloud", "park: home is cloud"]);
+  });
+
+  it("공개 주소가 내 PC 인데 버스팅도 꺼져 있으면 남은 클라우드 Pod 를 내리라고 한다", () => {
+    const view = overview({
+      burst: { ...burst({ home: "ONPREM" }), enabled: false },
+      cloudPods: { state: "running", ready: 2, replicas: 2 },
+      databaseLocation: null,
+    })!;
+    expect(view.home.label).toBe("내 PC");
+    expect(view.warnings).toEqual([expect.objectContaining({ action: "stopCloud", tone: "warning" })]);
+  });
+
+  it("공개 주소가 클라우드인데 Pod 가 없으면 위험을 알린다", () => {
+    const view = overview({
+      burst: burst({ home: "CLOUD" }),
+      cloudPods: { state: "stopped", ready: 0, replicas: 0 },
+      databaseLocation: null,
+    })!;
+    expect(view.warnings[0].tone).toBe("danger");
+    expect(view.cloud).toBe("Pod 0대 (내려 둠)");
+  });
+
+  it("에이전트가 다른 앱을 돌리면 그 앱 이름을 알린다", () => {
+    const view = overview({
+      burst: { enabled: false, cloudPercent: 0, agent: "other", agentApp: "dbmove-blog", live: null },
+      cloudPods: null,
+      databaseLocation: null,
+    })!;
+    expect(view.home.label).toBe("확인 못 함");
+    expect(view.pc).toContain("dbmove-blog");
+    expect(view.warnings[0].text).toContain("dbmove-blog");
   });
 });
