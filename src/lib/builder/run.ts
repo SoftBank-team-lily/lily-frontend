@@ -11,8 +11,9 @@
 //
 // 클라우드 앱을 내 PC 로 옮기는 배포(move):
 //   DB 를 내 PC 로 옮기면 쓰기를 막으려고 클라우드를 먼저 내린다(freeze) → 같은 앱 이름으로 에이전트에 배포
-//   → 성공하면 Ingress 를 내 PC 로 넘기고 클라우드 주소로 확인한 뒤 클라우드를 내린다 (finishMove)
-//   → 실패하면 Ingress·클라우드를 되돌린다 (cancelMove). 이 배포는 자동으로 고쳐 다시 보내지 않는다
+//   → 에이전트가 헬스를 통과한 뒤 공개 주소({앱}.{존}) CNAME 을 ALB 에서 내 PC 터널로 바꾼다
+//   → 성공하면 주소가 터널을 가리키는지와 응답을 확인한 뒤 클라우드를 내린다 (finishMove)
+//   → 실패하면 CNAME 을 ALB 로, 클라우드를 되돌린다 (cancelMove). 이 배포는 자동으로 고쳐 다시 보내지 않는다
 //
 // 상태는 recordEvent 로만 바꾼다 (전환 규칙을 그대로 따른다).
 
@@ -115,7 +116,7 @@ export type RunDeps = {
   ): Promise<void>;
   /** 옮기기 전 클라우드 쓰기를 막는다 (앱을 내린다). DB 를 내 PC 로 옮길 때만 */
   freezeCloud?(appName: string): Promise<void>;
-  /** 내 PC 배포가 끝났다: Ingress 를 내 PC 로 넘기고 확인한 뒤 클라우드를 내린다. 실패하면 되돌린다 */
+  /** 내 PC 배포가 끝났다: 공개 주소가 내 PC 터널로 바뀌었는지 확인한 뒤 클라우드를 내린다. 실패하면 되돌린다 */
   finishMove?(deploymentId: string, move: Move & { appName: string }, onPremUrl: string | null): Promise<MoveOutcome>;
   /** 내 PC 배포가 실패했다: 내려 둔 클라우드를 다시 띄운다 */
   cancelMove?(move: Move & { appName: string }): Promise<void>;
@@ -219,7 +220,7 @@ export async function runOnce(deps: RunDeps) {
   }
 }
 
-/** 옮기는 배포의 끝: 성공이면 Ingress 를 넘기고 확인, 실패면 클라우드를 되돌린다 */
+/** 옮기는 배포의 끝: 성공이면 주소가 내 PC 로 바뀌었는지 확인, 실패면 주소와 클라우드를 되돌린다 */
 async function settleMove(
   deps: RunDeps,
   active: Active,
@@ -231,16 +232,16 @@ async function settleMove(
   if (result === "succeeded") {
     const outcome = deps.finishMove
       ? await deps.finishMove(active.deploymentId, move, state?.url ?? null)
-      : ({ ok: false, message: "옮기기를 마무리할 수 없어요." } as const);
+      : ({ ok: false, message: "전환을 마무리할 수 없어요." } as const);
     if (outcome.ok) {
       await deps.saveResult(active.deploymentId, { url: outcome.url });
       await deps.event(active.deploymentId, "succeeded");
-      log(`배포 ${active.deploymentId}: 내 PC 로 옮겼어요 (${move.appName})`);
+      log(`배포 ${active.deploymentId}: 클라우드 → 온프레미스 전환 완료 (${move.appName})`);
       return;
     }
     await deps.saveResult(active.deploymentId, { message: outcome.message });
     await deps.event(active.deploymentId, "failed");
-    log(`배포 ${active.deploymentId}: 옮기기 실패 (${outcome.message})`);
+    log(`배포 ${active.deploymentId}: 전환 실패 (${outcome.message})`);
     return;
   }
   await safeCancel(deps, move, log);

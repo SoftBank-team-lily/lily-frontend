@@ -39,4 +39,13 @@ describe("프로젝트 입력 검증", async () => {
     });
     expect(() => validate(updateSchema, {})).toThrow("바꿀 내용이 없어요.");
   });
+
+  it("버스팅 비율은 0~100 정수, 거점은 cloud·onprem 만 받는다", async () => {
+    const { burstSchema, homeSchema } = await import("./schema");
+    expect(validate(burstSchema, { enabled: true, cloudPercent: 30 })).toEqual({ enabled: true, cloudPercent: 30 });
+    expect(() => validate(burstSchema, { enabled: true, cloudPercent: 101 })).toThrow();
+    expect(() => validate(burstSchema, { enabled: true, cloudPercent: 2.5 })).toThrow();
+    expect(validate(homeSchema, { home: "cloud" })).toEqual({ home: "cloud" });
+    expect(() => validate(homeSchema, { home: "edge" })).toThrow();
+  });
 });

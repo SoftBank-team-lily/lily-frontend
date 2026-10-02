@@ -136,14 +136,27 @@ export const updateSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, "바꿀 내용이 없어요.");
 export type ProjectUpdate = z.infer<typeof updateSchema>;
-/** 클라우드 ↔ 내 PC 옮기기. database 는 내 PC 로 옮길 때 DB 위치 (DB 없는 앱은 비운다) */
+/** 클라우드 앱을 내 PC 로 옮기기. database 는 DB 위치 (DB 없는 앱은 비운다). 되돌리기는 거점 전환이 맡는다 */
 export const moveSchema = z
   .object({
-    to: z.enum(["onprem", "cloud"]),
+    to: z.literal("onprem"),
     database: z.enum(["cloud", "local"]).nullable().optional(),
   })
   .strict();
 export type ProjectMove = z.infer<typeof moveSchema>;
+/** 버스팅 켜기·끄기와 클라우드 비율 (0~100). 0 이어도 대기 Pod 1대는 둔다 */
+export const burstSchema = z
+  .object({
+    enabled: z.boolean(),
+    cloudPercent: z.number().int().min(0).max(100),
+  })
+  .strict();
+export type BurstInput = z.infer<typeof burstSchema>;
+/** 공개 주소가 가리킬 곳 */
+/** migrateDatabase: 앱 DB 도 옮긴다 (클라우드로: 내 PC → RDS, 내 PC 로: RDS → 내 PC) */
+export const homeSchema = z
+  .object({ home: z.enum(["cloud", "onprem"]), migrateDatabase: z.boolean().optional() })
+  .strict();
 export const eventSchema = z
   .object({
     eventId: z.string().min(1).max(128),
