@@ -19,7 +19,7 @@ const DATABASES: { value: Database; label: string; description: string }[] = [
     value: "local",
     label: "DB 도 내 PC 로 옮기기",
     description:
-      "RDS 의 스키마와 데이터를 내 PC DB 로 복사해요. 옮기는 동안(내 PC 빌드 포함) 앱이 잠시 응답하지 않아요.",
+      "RDS 의 스키마와 데이터를 내 PC DB 로 복사해요. 전환하는 동안(내 PC 빌드 포함) 앱이 잠시 응답하지 않아요.",
   },
 ];
 
@@ -64,7 +64,7 @@ export function MovePanel({
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-line p-4 text-caption">
       <div>
-        <p className="text-control font-semibold text-ink">내 PC 로 옮기기</p>
+        <p className="text-control font-semibold text-ink">클라우드 → 온프레미스 전환</p>
         <p className="mt-1 text-mute">
           주소는 그대로예요. 내 PC 에 배포가 끝나고 그 주소로 닿는 걸 확인한 뒤에만 클라우드를 내려요. 중간에
           실패하면 클라우드가 계속 받아요.
@@ -101,7 +101,7 @@ export function MovePanel({
       )}
       <div className="flex flex-wrap gap-2">
         <Button disabled={busy || !connected} onClick={() => void start()}>
-          {busy ? "요청 중…" : connected ? "옮기기 시작" : "에이전트 연결을 기다리는 중"}
+          {busy ? "요청 중…" : connected ? "전환 시작" : "에이전트 연결을 기다리는 중"}
         </Button>
         <Button variant="ghost" disabled={busy} onClick={onCancel}>
           취소

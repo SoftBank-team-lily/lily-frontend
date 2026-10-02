@@ -50,7 +50,7 @@ describe("진행 중인 일 (버스팅 대기 배포·거점 전환)", () => {
       cancellable: true,
       build: { status: "이미지 빌드 중", line: "build: kaniko job build-b1" },
     });
-    expect(burstLock(value)).toContain("공개 주소를 옮기는 중");
+    expect(burstLock(value)).toContain("공개 주소 전환 중");
   });
 
   it("주소를 바꾸는 단계부터는 취소할 수 없다고 알린다", () => {

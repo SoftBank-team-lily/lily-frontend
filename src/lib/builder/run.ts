@@ -232,16 +232,16 @@ async function settleMove(
   if (result === "succeeded") {
     const outcome = deps.finishMove
       ? await deps.finishMove(active.deploymentId, move, state?.url ?? null)
-      : ({ ok: false, message: "옮기기를 마무리할 수 없어요." } as const);
+      : ({ ok: false, message: "전환을 마무리할 수 없어요." } as const);
     if (outcome.ok) {
       await deps.saveResult(active.deploymentId, { url: outcome.url });
       await deps.event(active.deploymentId, "succeeded");
-      log(`배포 ${active.deploymentId}: 내 PC 로 옮겼어요 (${move.appName})`);
+      log(`배포 ${active.deploymentId}: 클라우드 → 온프레미스 전환 완료 (${move.appName})`);
       return;
     }
     await deps.saveResult(active.deploymentId, { message: outcome.message });
     await deps.event(active.deploymentId, "failed");
-    log(`배포 ${active.deploymentId}: 옮기기 실패 (${outcome.message})`);
+    log(`배포 ${active.deploymentId}: 전환 실패 (${outcome.message})`);
     return;
   }
   await safeCancel(deps, move, log);

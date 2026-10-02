@@ -46,9 +46,9 @@ export function burstBlocker(burst: ProjectBurst): string | null {
 
 export const homeLabels: Record<HomePhase, string> = {
   ONPREM: "내 PC",
-  MOVING_TO_CLOUD: "클라우드로 옮기는 중",
+  MOVING_TO_CLOUD: "온프레미스 → 클라우드 전환 중",
   CLOUD: "클라우드",
-  MOVING_TO_ONPREM: "내 PC 로 옮기는 중",
+  MOVING_TO_ONPREM: "클라우드 → 온프레미스 전환 중",
   UNKNOWN: "알 수 없음",
 };
 
@@ -136,7 +136,7 @@ export function activities(burst: ProjectBurst | null): Activity[] {
     const share = build ? BUILD_SHARE[build.status] : 0.5;
     found.push({
       kind: "home",
-      title: live.home === "MOVING_TO_CLOUD" ? "공개 주소를 클라우드로 옮기는 중" : "공개 주소를 내 PC 로 옮기는 중",
+      title: live.home === "MOVING_TO_CLOUD" ? "온프레미스 → 클라우드 전환 중" : "클라우드 → 온프레미스 전환 중",
       steps: steps.map((step) => homeStepLabels[step] ?? step),
       current,
       percent: steps.length ? Math.min(99, Math.round(((current + share) / steps.length) * 100)) : 0,
@@ -170,7 +170,7 @@ export function activities(burst: ProjectBurst | null): Activity[] {
 export function burstLock(burst: ProjectBurst): string | null {
   const home = burst.live?.home;
   if (home === "MOVING_TO_CLOUD" || home === "MOVING_TO_ONPREM")
-    return "공개 주소를 옮기는 중이라 버스팅을 바꿀 수 없어요. 끝나거나 옮기기를 취소하면 바꿀 수 있어요.";
+    return "공개 주소 전환 중이라 버스팅을 바꿀 수 없어요. 끝나거나 전환을 취소하면 바꿀 수 있어요.";
   return null;
 }
 
@@ -215,7 +215,7 @@ export function overview(project: Pick<Project, "burst" | "cloudPods" | "databas
   const homeLabel = !live
     ? { label: "확인 못 함", tone: "mute" as const }
     : moving
-      ? { label: home === "MOVING_TO_CLOUD" ? "내 PC → 클라우드로 옮기는 중" : "클라우드 → 내 PC 로 옮기는 중", tone: "warning" as const }
+      ? { label: home === "MOVING_TO_CLOUD" ? "온프레미스 → 클라우드 전환 중" : "클라우드 → 온프레미스 전환 중", tone: "warning" as const }
       : home === "CLOUD"
         ? { label: "클라우드", tone: "ink" as const }
         : home === "ONPREM"
@@ -252,17 +252,17 @@ export function overview(project: Pick<Project, "burst" | "cloudPods" | "databas
     warnings.push({ text: "공개 주소가 클라우드인데 준비된 클라우드 Pod 가 없어요. 앱이 응답하지 않을 수 있어요.", tone: "danger" });
   if (home === "ONPREM" && !burst.enabled && pods && pods.replicas > 0)
     warnings.push({
-      text: `클라우드 Pod ${pods.replicas}대가 쓰이지 않고 떠 있어요 (끊긴 옮기기나 꺼진 버스팅이 남긴 것).`,
+      text: `클라우드 Pod ${pods.replicas}대가 쓰이지 않고 떠 있어요 (끊긴 전환이나 꺼진 버스팅이 남긴 것).`,
       tone: "warning",
       action: "stopCloud",
     });
   if (burst.agent === "other")
     warnings.push({
-      text: `내 PC 에이전트가 다른 앱(${burst.agentApp})을 돌리고 있어서 이 앱의 버스팅·옮기기를 쓸 수 없어요.`,
+      text: `내 PC 에이전트가 다른 앱(${burst.agentApp})을 돌리고 있어서 이 앱의 버스팅·전환을 쓸 수 없어요.`,
       tone: "warning",
     });
   if (activities(burst).length > 1)
-    warnings.push({ text: "버스팅 대기 배포와 옮기기가 같이 돌고 있어요. 하나를 취소해 주세요.", tone: "danger" });
+    warnings.push({ text: "버스팅 대기 배포와 전환이 같이 돌고 있어요. 하나를 취소해 주세요.", tone: "danger" });
 
   const recent = [live?.homeEvent, live?.event?.replace(/^\S+Z /, "")].filter((line): line is string => Boolean(line));
   return {

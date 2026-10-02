@@ -237,7 +237,7 @@ export async function updateBurst(ownerId: string, id: string, input: BurstInput
     throw new ApiError(
       409,
       "MOVING",
-      "공개 주소를 옮기는 중이라 버스팅을 바꿀 수 없어요. 끝나거나 옮기기를 취소한 뒤 바꿔 주세요.",
+      "공개 주소 전환 중이라 버스팅을 바꿀 수 없어요. 끝나거나 전환을 취소한 뒤 바꿔 주세요.",
     );
   await db.query(
     "UPDATE projects SET burst_enabled=$3, burst_cloud_percent=$4 WHERE id=$1 AND owner_id=$2",
@@ -268,7 +268,7 @@ export async function startHomeMove(
   if (!live.supported || !live.state?.movable)
     throw new ApiError(409, "NOT_MOVABLE", "이 에이전트는 거점을 옮길 수 없어요. 연결 명령으로 에이전트를 다시 실행해 주세요.");
   if (live.state.home.startsWith("MOVING"))
-    throw new ApiError(409, "MOVING", "이미 옮기는 중이에요.");
+    throw new ApiError(409, "MOVING", "이미 전환 중이에요.");
   if (live.state.phase === "STANDBY")
     throw new ApiError(
       409,
@@ -306,7 +306,7 @@ export async function cancelHomeMove(ownerId: string, id: string) {
   requireBurstable(row);
   const live = await burstStatus(row.app_name);
   if (!live?.state?.home.startsWith("MOVING"))
-    throw new ApiError(409, "NOT_MOVING", "옮기는 중이 아니에요.");
+    throw new ApiError(409, "NOT_MOVING", "전환 중이 아니에요.");
   if (!live.state.homeCancellable)
     throw new ApiError(
       409,

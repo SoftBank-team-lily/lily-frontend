@@ -62,7 +62,7 @@ export function ActivityProgress({
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {activity.cancellable ? (
           <Button variant="ghost" className="h-10" disabled={busy} onClick={onCancel}>
-            {busy ? "요청 중…" : activity.kind === "home" ? "옮기기 취소" : "대기 배포 취소 (버스팅 끄기)"}
+            {busy ? "요청 중…" : activity.kind === "home" ? "전환 취소" : "대기 배포 취소 (버스팅 끄기)"}
           </Button>
         ) : (
           activity.lockedReason && <p className="text-mute">{activity.lockedReason}</p>
