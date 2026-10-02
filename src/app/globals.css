@@ -9,6 +9,9 @@
   --color-danger: #d6453d;
   --color-rollback: #8c7560;
   --color-warning: #e9a53a;
+  /* 공개 주소 거점 배지 */
+  --color-cloud: #5aa7f0;
+  --color-onprem: #4cc38a;
 
   --container-page: 1080px;
 
