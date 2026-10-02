@@ -77,9 +77,8 @@ export async function getMonitor(ownerId: string, id: string, query: MonitorQuer
     } : null,
   };
   const common = { project: summary, agent, appName, namespace, window: query.window, generatedAt: new Date().toISOString() };
-  const unavailable = project.target === "onprem"
-    ? missing("unsupported", "온프레미스 앱의 실시간 관측은 아직 지원하지 않아요.")
-    : !appName ? missing("pending", "첫 배포가 실행되면 관측 데이터가 연결돼요.") : null;
+  // 온프레미스 앱도 클러스터에 같은 이름의 클라우드 쪽(버스팅 대기, 거점 클라우드)이 있으면 그 지표를 본다
+  const unavailable = !appName ? missing("pending", "첫 배포가 실행되면 관측 데이터가 연결돼요.") : null;
   if (unavailable) return { ...common, status: unavailable, metrics: unavailable, pods: unavailable,
     logs: unavailable, app: unavailable, route: unavailable, databases: unavailable };
   const appPath = `api/apps/${encodeURIComponent(appName!)}`;
