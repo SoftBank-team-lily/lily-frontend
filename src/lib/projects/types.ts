@@ -111,6 +111,28 @@ export type BurstLive = {
   databaseMode?: string;
   /** 거점과 같이 DB 를 옮길 수 있다 (postgres, 내 PC 또는 RDS) */
   databaseMovable?: boolean;
+  /** 지금 버스팅 단계에 들어온 시각 (epoch ms). 예전 에이전트면 없다 */
+  phaseSince?: number;
+  /** 진행 중이거나 마지막 버스팅 대기 배포의 빌드 id */
+  standbyBuild?: string;
+  /** 이번 거점 전환의 단계 순서 (STANDBY · COPY · PAUSE · DEPLOY · SCALE · DNS · VERIFY) */
+  homeSteps?: string[];
+  /** 지금 거점 전환 단계. 옮기는 중이 아니면 빈 문자열 */
+  homeStep?: string;
+  homeStepSince?: number;
+  /** 거점 전환이 기다리는 클라우드 빌드 id */
+  homeBuild?: string;
+  /** 지금 취소하면 출발 거점으로 되돌린다 (주소를 바꾸기 전) */
+  homeCancellable?: boolean;
+};
+/** 에이전트가 기다리는 클라우드 빌드의 진행 (builder 빌드 기록) */
+export type BuildProgress = {
+  id: string;
+  status: "QUEUED" | "BUILDING" | "DEPLOYING" | "SUCCEEDED" | "FAILED" | "ROLLED_BACK";
+  /** 빌드 로그 마지막 줄 */
+  line: string;
+  createdAt: string;
+  updatedAt: string;
 };
 /**
  * 온프레미스 앱의 버스팅. enabled·cloudPercent 는 화면에서 정한 값이고 live 는 에이전트가 보낸 지금 상태다.
@@ -121,6 +143,8 @@ export type ProjectBurst = {
   cloudPercent: number;
   agent: "connected" | "waiting" | "outdated" | "offline" | "unknown";
   live: BurstLive | null;
+  /** standbyBuild: 버스팅 대기 배포, homeBuild: 거점 전환 대기 배포 */
+  builds?: { standbyBuild?: BuildProgress; homeBuild?: BuildProgress };
 };
 export type Project = {
   id: string;
