@@ -136,6 +136,14 @@ export const updateSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, "바꿀 내용이 없어요.");
 export type ProjectUpdate = z.infer<typeof updateSchema>;
+/** 클라우드 ↔ 내 PC 옮기기. database 는 내 PC 로 옮길 때 DB 위치 (DB 없는 앱은 비운다) */
+export const moveSchema = z
+  .object({
+    to: z.enum(["onprem", "cloud"]),
+    database: z.enum(["cloud", "local"]).nullable().optional(),
+  })
+  .strict();
+export type ProjectMove = z.infer<typeof moveSchema>;
 export const eventSchema = z
   .object({
     eventId: z.string().min(1).max(128),

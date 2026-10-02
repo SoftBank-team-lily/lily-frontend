@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { appAction, routeUpstream } from "@/lib/projects/apps";
 import {
   AUTO_FIX_KEY,
   createDeployment,
@@ -21,6 +22,10 @@ import {
 // 서버 프로세스 안에서 주기적으로 runOnce 를 돌린다. src/instrumentation.ts 가 BUILDER_URL 이 있을 때만 켠다.
 
 const REGISTER_KEY = "builder:register";
+/** Ingress 를 내 PC 로 넘긴 뒤 클라우드 주소로 확인하는 시간 (ingress-nginx 반영 포함) */
+const MOVE_PROBE_MS = 90_000;
+/** 확인한 뒤 클라우드를 내리기까지. 클라우드에서 처리 중이던 요청이 끝나게 둔다 */
+const MOVE_DRAIN_MS = 30_000;
 const state = globalThis as typeof globalThis & { lilyBuilderWorker?: true };
 
 export function startBuilderWorker() {
@@ -81,10 +86,13 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         database: DatabaseChoice | null;
         database_location: DatabaseLocation | null;
         database_url: string | null;
+        app_name: string | null;
+        move: "onprem" | null;
+        move_database: "cloud" | "local" | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
           p.branch, p.root_dir, p.port, p.health_path, p.env, p.database,
-          p.database_location, p.database_url FROM deployments d
+          p.database_location, p.database_url, p.app_name, d.move, d.move_database FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -92,12 +100,36 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         ORDER BY d.created_at LIMIT $1`,
         [limit],
       );
-      return result.rows.map((row) => ({
+      return result.rows.map((row) => {
+        if (row.move === "onprem")
+          // 클라우드 앱을 내 PC 로: 같은 앱 이름(공개 주소·RDS)으로 에이전트에 보낸다
+          return {
+            deploymentId: row.id,
+            projectId: row.project_id,
+            repo: row.repo,
+            target: "onprem" as const,
+            agentKey: row.agent_key,
+            appName: row.app_name,
+            move: { database: row.move_database },
+            settings: {
+              branch: row.branch,
+              rootDir: row.root_dir,
+              port: row.port,
+              healthPath: row.health_path,
+              env: row.env,
+              database: row.database,
+              ...(row.move_database
+                ? { databaseLocation: row.move_database, importDatabase: row.move_database === "local" }
+                : {}),
+            },
+          };
+        return {
         deploymentId: row.id,
         projectId: row.project_id,
         repo: row.repo,
         target: row.target,
         agentKey: row.agent_key,
+        appName: row.app_name,
         settings: {
           branch: row.branch,
           rootDir: row.root_dir,
@@ -109,15 +141,19 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
             ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
             : {}),
         },
-      }));
+        };
+      });
     },
     async active() {
       const result = await db.query<{
         id: string;
         status: "queued" | "running";
         build_id: string;
+        app_name: string;
+        move: "onprem" | null;
+        move_database: "cloud" | "local" | null;
       }>(
-        `SELECT d.id, d.status, r.build_id FROM builder_runs r
+        `SELECT d.id, d.status, r.build_id, r.app_name, d.move, d.move_database FROM builder_runs r
         JOIN deployments d ON d.id=r.deployment_id
         WHERE d.status IN ('queued','running') AND r.build_id IS NOT NULL ORDER BY r.created_at`,
       );
@@ -125,6 +161,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         deploymentId: row.id,
         status: row.status,
         buildId: row.build_id,
+        move: row.move ? { database: row.move_database, appName: row.app_name } : null,
       }));
     },
     async saveRun(deploymentId, buildId, appName) {
@@ -231,9 +268,78 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         [deploymentId, stage, JSON.stringify(logs)],
       );
     },
+    async freezeCloud(app) {
+      await appAction(app, "stop");
+    },
+    async cancelMove(move) {
+      // 클라우드는 DB 를 옮길 때만 내렸다
+      if (move.database === "local") await appAction(move.appName, "start");
+    },
+    async finishMove(deploymentId, move, onPremUrl) {
+      const fail = async (message: string) => {
+        await routeUpstream(move.appName, null).catch(() => false);
+        if (move.database === "local") await appAction(move.appName, "start").catch(() => false);
+        return { ok: false as const, message };
+      };
+      const host = onPremUrl ? safeHost(onPremUrl) : null;
+      if (!host) return fail("내 PC 공개 주소를 받지 못해 클라우드에 그대로 두었어요.");
+      const found = await db.query<{ project_id: string; url: string | null; health_path: string | null }>(
+        `SELECT d.project_id, p.health_path,
+          (SELECT r.url FROM builder_runs r JOIN deployments d2 ON d2.id=r.deployment_id
+            WHERE d2.project_id=d.project_id AND d2.status='succeeded' AND d2.move IS NULL AND r.url IS NOT NULL
+            ORDER BY r.created_at DESC LIMIT 1) AS url
+        FROM deployments d JOIN projects p ON p.id=d.project_id WHERE d.id=$1`,
+        [deploymentId],
+      );
+      const row = found.rows[0];
+      if (!row?.url) return fail("클라우드 주소를 찾지 못해 클라우드에 그대로 두었어요.");
+      if (!(await routeUpstream(move.appName, host)))
+        return fail("클러스터에 이 앱의 Ingress 가 없어 옮기지 못했어요.");
+      // Ingress 반영 전에는 클라우드 Pod 가 답한다. Cloudflare 를 거쳐 온 응답(cf-ray)이어야 내 PC 다
+      if (!(await reachesOnPrem(row.url, row.health_path)))
+        return fail("클라우드 주소로 내 PC 앱에 닿지 않아 클라우드로 되돌렸어요.");
+      await db.query(
+        "UPDATE projects SET target='onprem', database_location=$2 WHERE id=$1",
+        [row.project_id, move.database],
+      );
+      setTimeout(() => {
+        appAction(move.appName, "stop").catch((error: unknown) =>
+          console.warn(`[builder] ${move.appName} 클라우드 내리기 실패`, error),
+        );
+      }, MOVE_DRAIN_MS).unref();
+      return { ok: true as const, url: row.url };
+    },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다
       await recordEvent(deploymentId, `builder-${status}`, status);
     },
   };
+}
+
+function safeHost(url: string) {
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 클라우드 주소로 요청해서 Cloudflare 터널(내 PC)을 거친 응답이 올 때까지 */
+async function reachesOnPrem(cloudUrl: string, healthPath: string | null) {
+  const target = new URL(healthPath || "/", cloudUrl).toString();
+  const deadline = Date.now() + MOVE_PROBE_MS;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(target, {
+        redirect: "manual",
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (response.status < 500 && response.headers.has("cf-ray")) return true;
+    } catch {
+      // 다음에 다시
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  return false;
 }

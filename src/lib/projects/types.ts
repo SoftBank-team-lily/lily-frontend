@@ -95,6 +95,10 @@ export type Project = {
   healthPath: string | null;
   /** 온프레미스 앱의 DB 위치. 클라우드 프로젝트나 이 값 전에 등록한 프로젝트는 null */
   databaseLocation: DatabaseLocation | null;
+  /** 등록할 때 고른 DB. null 이면 builder 가 레포를 보고 정한다 */
+  database: DatabaseChoice | null;
+  /** 클라우드에서 내 PC 로 옮긴 앱. 공개 주소는 클라우드 주소 그대로이고 되돌릴 수 있다 */
+  movedFromCloud: boolean;
   /** 환경변수 이름만 돌려준다 (값은 비밀일 수 있다) */
   envKeys: string[];
   /** 값을 몰라 unset 으로 넣은 키. 넣으면 그 기능이 켜진다 */
@@ -118,6 +122,8 @@ export type Project = {
     autoFixed: boolean;
     /** 몇 번째 자동 재배포인지. 사용자가 시작한 배포면 0 */
     autoFixAttempt: number;
+    /** onprem: 클라우드 앱을 내 PC 로 옮기는 배포 */
+    move: "onprem" | null;
   } | null;
 };
 export type Deployment = {
@@ -139,6 +145,7 @@ export type ReadyProject = Omit<Project, "latestDeployment"> & {
     diagnosis: Diagnosis | null;
     autoFixed: boolean;
     autoFixAttempt: number;
+    move: "onprem" | null;
   };
 };
 export type ProjectEntry = {
