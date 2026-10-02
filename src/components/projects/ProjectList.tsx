@@ -42,6 +42,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [target, setTarget] = useState<DeployTarget>("cloud");
+  /** 등록 폼. 처음에는 이미 올린 프로젝트만 보이고, 새 프로젝트를 누르면 연다 */
+  const [creating, setCreating] = useState(false);
   const [agent, setAgent] = useState<AgentState>(null);
   /** 배포 전 확인을 기다리는 등록. 생성을 누르면 고른 DB·폴더·설정을 넣어 등록한다 */
   const [choice, setChoice] = useState<{
@@ -145,6 +147,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
       if (signal.aborted) return;
       setPage(result);
       form.reset();
+      setCreating(false);
     });
   }
   function reload(more = false) {
@@ -170,24 +173,28 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
     });
   }
   return (
-    <section
-      className="mt-10 border-t border-line pt-8"
-      aria-labelledby="projects-title"
-    >
+    <section aria-labelledby="projects-title">
       <div className="flex items-center justify-between gap-3">
         <h2 id="projects-title" className="text-lead font-semibold">
-          내 프로젝트
+          올린 프로젝트 {page.items.length > 0 && <span className="text-mute">{page.items.length}</span>}
         </h2>
-        <button
-          type="button"
-          onClick={() => reload()}
-          disabled={busy}
-          className="text-caption text-mute hover:text-ink disabled:opacity-40"
-        >
-          새로고침
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => reload()}
+            disabled={busy}
+            className="text-caption text-mute hover:text-ink disabled:opacity-40"
+          >
+            새로고침
+          </button>
+          <Button type="button" variant={creating ? "ghost" : "primary"} className="h-9" onClick={() => setCreating(!creating)}>
+            {creating ? "닫기" : "+ 새 프로젝트"}
+          </Button>
+        </div>
       </div>
-      <p className="mt-2 text-caption text-mute">
+      {creating && (
+        <div className="mt-4 rounded-xl border border-line p-5">
+      <p className="text-caption text-mute">
         레포를 등록하면 바로 배포를 시작해요. Dockerfile이 없어도 돼요.
         백엔드와 프론트가 한 레포에 있으면 앱 폴더마다 하나씩 등록해 주세요.
       </p>
@@ -220,6 +227,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
           )}
         </fieldset>
       </form>
+        </div>
+      )}
       <p role="alert" className="mt-3 text-caption text-danger">
         {error}
       </p>
@@ -258,7 +267,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-5 text-note text-mute">등록된 프로젝트가 없어요.</p>
+        <p className="mt-5 text-note text-mute">아직 올린 프로젝트가 없어요. 오른쪽 위 + 새 프로젝트로 올려 보세요.</p>
       )}
       {page.nextCursor && (
         <Button
