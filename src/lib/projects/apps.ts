@@ -158,27 +158,37 @@ export function runtimeOf(apps: Map<string, AppRuntime> | null, appName: string 
   return apps.get(appName) ?? { state: "absent", ready: 0, replicas: 0 };
 }
 
-/**
- * 클라우드 앱의 Ingress 를 내 PC 공개 호스트로 넘기거나(host) 클러스터로 되돌린다(null).
- * @returns builder·cicd 가 받았으면 true. 앱 Ingress 가 없으면 false
- */
-export async function routeUpstream(appName: string, host: string | null): Promise<boolean> {
+/** 앱 공개 주소 {app}.{존} 의 거점. CLOUD: ALB, ONPREM: 내 PC 터널 (CNAME 내용물) */
+export type AppAddress = { host: string; home: "CLOUD" | "ONPREM" | "NONE" | "OTHER"; content: string };
+
+/** builder 가 Cloudflare 레코드를 읽어 준다. 없거나 응답이 없으면 null */
+export async function appAddress(appName: string): Promise<AppAddress | null> {
   const base = builderUrl();
-  if (!base)
-    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
-  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/upstream`, {
-    method: host ? "PUT" : "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: host ? JSON.stringify({ host }) : undefined,
+  if (!base) return null;
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/address`, {
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
-  if (response.status === 404) return false;
   if (!response.ok) {
-    console.error(`builder upstream ${appName}: ${response.status} ${await response.text()}`);
-    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+    console.error(`builder address ${appName}: ${response.status} ${await response.text()}`);
+    return null;
   }
-  return true;
+  return (await response.json()) as AppAddress;
+}
+
+/** 공개 주소를 클러스터(ALB)로 되돌린다. 내 PC 로 옮기다 실패했을 때. 받았으면 true */
+export async function pointAddressToCloud(appName: string): Promise<boolean> {
+  const base = builderUrl();
+  if (!base) return false;
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/address`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ home: "cloud" }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) console.error(`builder address ${appName} cloud: ${response.status} ${await response.text()}`);
+  return response.ok;
 }
 
 /**

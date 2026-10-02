@@ -55,11 +55,8 @@ export function ProjectItem({
   const [deleting, setDeleting] = useState<{ dropDatabase: boolean } | null>(null);
   /** 내 PC 로 옮기기 창 */
   const [moving, setMoving] = useState(false);
-  /** 클라우드로 되돌리기 확인 중 */
-  const [returning, setReturning] = useState(false);
   const movingNow = deploying && latest?.move === "onprem";
   const canMove = project.target === "cloud" && latest?.status === "succeeded" && !deploying;
-  const canReturn = project.movedFromCloud && !deploying;
   /** 중지·다시 시작·삭제. 실패하면 이유를 보인다 */
   async function act(operation: () => Promise<void>) {
     if (lock.current) return;
@@ -88,17 +85,6 @@ export function ProjectItem({
         ),
       ),
     );
-  const returnToCloud = () =>
-    act(async () => {
-      onUpdate(
-        await projectRequest<Project>(`/api/projects/${project.id}/move`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: "cloud" }),
-        }),
-      );
-      setReturning(false);
-    });
   const remove = (dropDatabase: boolean) =>
     act(async () => {
       await projectRequest(
@@ -427,19 +413,6 @@ export function ProjectItem({
               내 PC 로 옮기기
             </button>
           )}
-          {canReturn && !returning && (
-            <button
-              type="button"
-              onClick={() => {
-                setReturning(true);
-                setError("");
-              }}
-              disabled={busy}
-              className="text-mute hover:text-ink disabled:opacity-40"
-            >
-              클라우드로 되돌리기
-            </button>
-          )}
           {!deploying && (
             <button
               type="button"
@@ -484,25 +457,6 @@ export function ProjectItem({
           }}
           onCancel={() => setMoving(false)}
         />
-      )}
-      {returning && canReturn && !editing && (
-        <div className="mt-4 rounded-xl border border-line p-4 text-caption">
-          <p className="text-ink">
-            {project.databaseLocation === "local"
-              ? "DB 가 내 PC 에 있어서 클라우드로 되돌리면 데이터가 따라가지 않아요."
-              : "클라우드 앱을 다시 띄우고, 다 뜨면 같은 주소를 클라우드로 돌려요. 그때까지는 내 PC 가 받아요."}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {project.databaseLocation !== "local" && (
-              <Button disabled={busy} onClick={() => void returnToCloud()}>
-                {busy ? "되돌리는 중… (최대 2분)" : "되돌리기"}
-              </Button>
-            )}
-            <Button variant="ghost" disabled={busy} onClick={() => setReturning(false)}>
-              취소
-            </Button>
-          </div>
-        </div>
       )}
       {deleting && !editing && (
         <div className="mt-4 rounded-xl border border-danger p-4 text-caption">
