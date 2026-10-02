@@ -157,18 +157,26 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         status: string;
         url: string | null;
         logs?: string[];
+        commit?: string | null;
       };
       return {
         status: build.status,
         url: build.url ?? null,
         message: resultLine(build.logs),
         logs: build.logs ?? [],
+        commit: build.commit ?? null,
       };
     },
     async saveProgress(deploymentId, stage, logs) {
       await db.query(
         "UPDATE builder_runs SET stage=$2, logs=$3::jsonb WHERE deployment_id=$1",
         [deploymentId, stage, JSON.stringify(logs)],
+      );
+    },
+    async saveCommit(deploymentId, sha) {
+      await db.query(
+        "UPDATE builder_runs SET commit_sha=$2 WHERE deployment_id=$1",
+        [deploymentId, sha],
       );
     },
     async event(deploymentId, status) {
