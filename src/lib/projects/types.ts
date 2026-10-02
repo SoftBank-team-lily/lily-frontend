@@ -31,6 +31,8 @@ export type Project = {
   webhookSecret: string;
   /** GitHub에 등록할 Payload URL. 서버 공개 주소가 없으면 빈 문자열 */
   webhookUrl: string;
+  /** GitHub App 설치에 연결되면 저장소 웹훅 없이 푸시로 배포한다 */
+  githubApp: boolean;
   createdAt: string;
   /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {

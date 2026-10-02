@@ -153,6 +153,13 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         레포를 등록하면 바로 배포를 시작해요. Dockerfile이 없어도 돼요.
         백엔드와 프론트가 한 레포에 있으면 앱 폴더마다 하나씩 등록해 주세요.
       </p>
+      <p className="mt-2 text-caption text-mute">
+        <a href="/api/github/install" className="text-ink underline">
+          GitHub 연결
+        </a>
+        을 하면 고른 저장소에 푸시할 때마다 다시 배포해요. 브랜치를 비워 두면
+        main만 받아요.
+      </p>
       <form onSubmit={create} className="mt-5 space-y-4" aria-busy={busy}>
         <fieldset disabled={busy} className="flex flex-col gap-4">
           <AuthField

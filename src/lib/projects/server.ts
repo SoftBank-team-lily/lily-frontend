@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api";
+import { attachProjectIfInstalled } from "@/lib/github/install";
 import { createWebhookSecret, type WebhookProject } from "@/lib/github/webhook";
 import type {
   Project,
@@ -25,6 +26,7 @@ type Row = {
   health_path: string | null;
   env_keys: string[];
   webhook_secret: string | null;
+  github_installation_id: string | null;
   created_at: Date;
   deployment_id: string | null;
   status: DeploymentStatus | null;
@@ -35,7 +37,8 @@ type Row = {
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
 const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.root_dir, p.branch, p.port, p.health_path,
-  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys, p.webhook_secret, p.created_at,
+  ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys, p.webhook_secret,
+  p.github_installation_id::text AS github_installation_id, p.created_at,
   d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs
   FROM projects p LEFT JOIN LATERAL (
     SELECT id, status FROM deployments WHERE project_id=p.id ORDER BY created_at DESC, id DESC LIMIT 1
@@ -52,8 +55,9 @@ function project(row: Row): Project {
     port: row.port,
     healthPath: row.health_path,
     envKeys: row.env_keys,
-    webhookSecret: row.webhook_secret ?? "",
-    webhookUrl: webhookUrl(),
+    webhookSecret: row.github_installation_id ? "" : (row.webhook_secret ?? ""),
+    webhookUrl: row.github_installation_id ? "" : webhookUrl(),
+    githubApp: row.github_installation_id !== null,
     createdAt: row.created_at.toISOString(),
     latestDeployment:
       row.deployment_id && row.status
@@ -140,6 +144,11 @@ export async function createProject(
       createWebhookSecret(),
     ],
   );
+  try {
+    await attachProjectIfInstalled(ownerId, id, repo);
+  } catch {
+    console.error("등록한 프로젝트를 GitHub 설치에 연결하지 못했습니다.");
+  }
   return getProject(ownerId, id);
 }
 /** 이름과 배포 설정을 바꾼다. 다음 배포부터 쓴다 (지금 떠 있는 앱은 다시 배포해야 바뀐다) */
@@ -205,14 +214,17 @@ export async function projectsForWebhook(repo: string): Promise<WebhookProject[]
     owner_id: string;
     branch: string | null;
     webhook_secret: string | null;
-  }>("SELECT id, owner_id, branch, webhook_secret FROM projects WHERE repo=$1", [
-    repo,
-  ]);
+    github_installation_id: string | null;
+  }>(
+    "SELECT id, owner_id, branch, webhook_secret, github_installation_id::text AS github_installation_id FROM projects WHERE repo=$1",
+    [repo],
+  );
   return result.rows.map((row) => ({
     id: row.id,
     ownerId: row.owner_id,
     branch: row.branch,
     secret: row.webhook_secret,
+    installationId: row.github_installation_id,
   }));
 }
 export async function createDeployment(

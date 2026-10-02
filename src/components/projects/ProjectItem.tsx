@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { projectRequest, ProjectError } from "@/lib/projects/client";
 import type { Project, DeploymentStatus } from "@/lib/projects/types";
 import { AuthField } from "@/components/auth/AuthField";
@@ -26,11 +26,58 @@ export function ProjectItem({
   const lock = useRef(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [place, setPlace] = useState<"cloud" | "onprem" | null>(null);
   const [error, setError] = useState("");
   const latest = project.latestDeployment;
   const watchedBranch = project.branch || "main";
   const canRedeploy =
     latest !== null && latest.status !== "queued" && latest.status !== "running";
+  const settled = latest?.status === "succeeded";
+  useEffect(() => {
+    if (!settled) return;
+    let stop = false;
+    projectRequest<{ home: "cloud" | "onprem" | null }>(
+      `/api/projects/${project.id}/home`,
+    )
+      .then((data) => {
+        if (!stop)
+          setPlace(data.home === "cloud" || data.home === "onprem" ? data.home : null);
+      })
+      .catch(() => {
+        if (!stop) setPlace(null);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [project.id, settled]);
+  async function move() {
+    if (!place || lock.current) return;
+    const next = place === "cloud" ? "onprem" : "cloud";
+    lock.current = true;
+    setMoving(true);
+    setError("");
+    try {
+      const result = await projectRequest<{ home: "cloud" | "onprem" }>(
+        `/api/projects/${project.id}/home`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ home: next }),
+        },
+      );
+      setPlace(result.home);
+    } catch (error) {
+      setError(
+        error instanceof ProjectError
+          ? error.message
+          : "서버에 연결하지 못했어요.",
+      );
+    } finally {
+      lock.current = false;
+      setMoving(false);
+    }
+  }
   async function redeploy() {
     if (lock.current) return;
     lock.current = true;
@@ -221,11 +268,12 @@ export function ProjectItem({
         <div className="mt-4 flex flex-wrap items-center gap-4 text-caption">
           <button
             type="button"
+            disabled={moving}
             onClick={() => {
               setEditing(true);
               setError("");
             }}
-            className="text-mute hover:text-ink"
+            className="text-mute hover:text-ink disabled:opacity-40"
           >
             설정
           </button>
@@ -233,10 +281,24 @@ export function ProjectItem({
             <button
               type="button"
               onClick={redeploy}
-              disabled={busy}
+              disabled={busy || moving}
               className="text-mute hover:text-ink disabled:opacity-40"
             >
               {busy ? "요청 중…" : "다시 배포"}
+            </button>
+          )}
+          {place && (
+            <button
+              type="button"
+              onClick={move}
+              disabled={busy || moving}
+              className="text-mute hover:text-ink disabled:opacity-40"
+            >
+              {moving
+                ? "옮기는 중…"
+                : place === "cloud"
+                  ? "내 PC로 옮기기"
+                  : "클라우드로 옮기기"}
             </button>
           )}
           {project.latestDeployment?.status === "succeeded" &&
@@ -274,12 +336,27 @@ function WebhookSetup({
   project: Project;
   branch: string;
 }) {
+  if (project.githubApp)
+    return (
+      <div className="mt-4 border-t border-line pt-4">
+        <p className="text-caption text-mute">
+          GitHub App이 연결되어 있어요. {branch}에 푸시하면 이 프로젝트를 다시
+          배포해요.
+        </p>
+      </div>
+    );
   return (
     <div className="mt-4 border-t border-line pt-4">
       <p className="text-caption text-mute">
-        GitHub 저장소의 Settings → Webhooks에 아래 값을 넣으면 {branch}에
-        푸시할 때마다 이 프로젝트를 다시 배포해요. Content type은
-        application/json, 이벤트는 push만 고르세요.
+        <a href="/api/github/install" className="text-ink underline">
+          GitHub 연결
+        </a>
+        을 누르면 저장소를 고르는 화면으로 이동해요. 연결한 뒤에는 아래 값을
+        붙이지 않아도 {branch} 푸시가 배포돼요.
+      </p>
+      <p className="mt-2 text-caption text-mute">
+        앱을 쓰기 전에는 GitHub 저장소의 Settings → Webhooks에 아래 값을
+        넣으세요. Content type은 application/json, 이벤트는 push만 고르세요.
       </p>
       {project.webhookUrl ? (
         <CopyLine label="Payload URL" value={project.webhookUrl} />

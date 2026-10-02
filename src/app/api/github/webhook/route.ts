@@ -1,4 +1,6 @@
 import { ApiError, apiError, json } from "@/lib/api";
+import { githubAppConfig } from "@/lib/github/app";
+import { applyInstallationChange } from "@/lib/github/install";
 import { WebhookRejected, handleWebhook } from "@/lib/github/webhook";
 import { createDeployment, projectsForWebhook } from "@/lib/projects/server";
 
@@ -39,10 +41,12 @@ export async function POST(request: Request) {
       event: request.headers.get("x-github-event"),
       signature: request.headers.get("x-hub-signature-256"),
       body,
+      appSecret: githubAppConfig().webhookSecret || null,
       findProjects: projectsForWebhook,
       deploy: async (ownerId, projectId, sha) => {
         await createDeployment(ownerId, projectId, sha);
       },
+      onInstallation: applyInstallationChange,
     });
     return json(result.body, result.status);
   } catch (error) {
