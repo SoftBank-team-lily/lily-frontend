@@ -82,6 +82,42 @@ export type Diagnosis = {
  */
 export type AppState = "running" | "starting" | "stopped" | "absent";
 export type AppRuntime = { state: AppState; ready: number; replicas: number };
+/**
+ * 에이전트(lily-on-premise CloudBurst)의 버스팅 단계.
+ * STANDBY: 클라우드에 대기 배포 중, WARMING: 대기 Pod 를 띄워 닿기를 기다림, IDLE: 대기 Pod 가 닿아 비율만큼 넘기는 중,
+ * SCALING: 대기 Pod 없이 과부하라 Pod 를 띄우는 중, OVERFLOWING: 과부하로 클라우드를 늘려 넘기는 중
+ */
+export type BurstPhase = "OFF" | "STANDBY" | "WARMING" | "IDLE" | "SCALING" | "OVERFLOWING";
+/** 공개 주소(CNAME)가 가리키는 곳. MOVING_* 은 옮기는 중 */
+export type HomePhase = "ONPREM" | "MOVING_TO_CLOUD" | "CLOUD" | "MOVING_TO_ONPREM" | "UNKNOWN";
+/** 에이전트가 몇 초마다 보내는 상태 (builder /api/apps/{app}/burst) */
+export type BurstLive = {
+  /** builder 와 클라우드 Ingress 가 있어 켤 수 있다 (플랫폼 연결) */
+  available: boolean;
+  enabled: boolean;
+  cloudPercent: number;
+  phase: BurstPhase;
+  /** 대기 Pod 가 닿아 넘길 수 있다 */
+  warm: boolean;
+  localActive: number;
+  remoteActive: number;
+  overflowedTotal: number;
+  event: string;
+  home: HomePhase;
+  /** 거점을 옮길 수 있는 연결이 있다 */
+  movable: boolean;
+  homeEvent: string;
+};
+/**
+ * 온프레미스 앱의 버스팅. enabled·cloudPercent 는 화면에서 정한 값이고 live 는 에이전트가 보낸 지금 상태다.
+ * agent: connected(상태를 받음) · waiting(붙었지만 아직 이 앱 상태가 없음) · outdated(버스팅을 모르는 판) · offline · unknown(확인 못 함)
+ */
+export type ProjectBurst = {
+  enabled: boolean;
+  cloudPercent: number;
+  agent: "connected" | "waiting" | "outdated" | "offline" | "unknown";
+  live: BurstLive | null;
+};
 export type Project = {
   id: string;
   repo: string;
@@ -106,6 +142,8 @@ export type Project = {
   createdAt: string;
   /** 클러스터 앱 상태. 온프레미스이거나, 아직 보낸 적 없거나, 확인하지 못했으면 null */
   runtime: AppRuntime | null;
+  /** 온프레미스 앱의 클라우드 버스팅·거점. 클라우드 프로젝트나 아직 배포한 적 없으면 null */
+  burst: ProjectBurst | null;
   /** url: 배포가 끝나 앱에 접속할 수 있는 주소, message: 결과 한 줄 (실패 이유) */
   latestDeployment: {
     id: string;

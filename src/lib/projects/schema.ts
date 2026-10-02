@@ -144,6 +144,16 @@ export const moveSchema = z
   })
   .strict();
 export type ProjectMove = z.infer<typeof moveSchema>;
+/** 버스팅 켜기·끄기와 클라우드 비율 (0~100). 0 이어도 대기 Pod 1대는 둔다 */
+export const burstSchema = z
+  .object({
+    enabled: z.boolean(),
+    cloudPercent: z.number().int().min(0).max(100),
+  })
+  .strict();
+export type BurstInput = z.infer<typeof burstSchema>;
+/** 공개 주소가 가리킬 곳 */
+export const homeSchema = z.object({ home: z.enum(["cloud", "onprem"]) }).strict();
 export const eventSchema = z
   .object({
     eventId: z.string().min(1).max(128),
