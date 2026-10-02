@@ -106,7 +106,7 @@ export function BurstPanel({
     }, COMMIT_MS);
   }
   const move = (target: "cloud" | "onprem", migrateDatabase: boolean) =>
-    send(target === "cloud" ? "클라우드로 옮기기" : "내 PC 로 되돌리기", () =>
+    send(target === "cloud" ? "온프레미스 → 클라우드 전환" : "클라우드 → 온프레미스 전환", () =>
       projectRequest<Project>(`/api/projects/${project.id}/home`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -115,7 +115,7 @@ export function BurstPanel({
     ).then(() => setConfirmHome(null));
   const offer = confirmHome ? databaseMoveOffer(live, confirmHome) : false;
   const cancelHome = () =>
-    send("옮기기 취소", () =>
+    send("전환 취소", () =>
       projectRequest<Project>(`/api/projects/${project.id}/home/cancel`, { method: "POST" }),
     );
 
@@ -195,7 +195,7 @@ export function BurstPanel({
                 onClick={() => setConfirmHome(home === "ONPREM" ? "cloud" : "onprem")}
                 className="text-mute hover:text-ink disabled:opacity-40"
               >
-                {home === "ONPREM" ? "클라우드로 옮기기" : "내 PC 로 되돌리기"}
+                {home === "ONPREM" ? "온프레미스 → 클라우드 전환" : "클라우드 → 온프레미스 전환"}
               </button>
             )}
           </div>
@@ -208,12 +208,12 @@ export function BurstPanel({
             <div className="mt-3 rounded-xl border border-line p-3">
               <p className="text-ink">
                 {confirmHome === "cloud"
-                  ? "공개 주소가 클라우드를 가리키게 해요. 클라우드가 준비된 걸 확인한 뒤 옮기고, 실패하면 내 PC 로 되돌려요. 30초 뒤 내 PC 앱은 멈춰요."
-                  : "내 PC 에 앱을 다시 띄우고 공개 주소를 내 PC 로 되돌려요. 실패하면 클라우드에 남아요."}
+                  ? "공개 주소가 클라우드를 가리키게 해요. 클라우드가 준비된 걸 확인한 뒤 전환하고, 실패하면 온프레미스로 되돌려요. 30초 뒤 내 PC 앱은 멈춰요."
+                  : "내 PC 에 앱을 다시 띄우고 공개 주소를 온프레미스로 전환해요. 실패하면 클라우드에 남아요."}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button className="h-10" disabled={busy} onClick={() => void move(confirmHome, false)}>
-                  {busy ? "요청 중…" : "옮기기"}
+                  {busy ? "요청 중…" : "전환"}
                 </Button>
                 <Button variant="ghost" disabled={busy} onClick={() => setConfirmHome(null)}>
                   취소
@@ -234,8 +234,8 @@ export function BurstPanel({
                 </Button>
                 <p className="px-1 text-mute">
                   {confirmHome === "cloud"
-                    ? "PC 를 꺼도 앱과 데이터가 살아 있어요. 옮기는 동안 잠깐 앱이 응답하지 않아요."
-                    : "클라우드에 있는 동안 바뀐 데이터·스키마를 내 PC DB 에 덮어써요. 옮기는 동안 잠깐 앱이 응답하지 않아요."}
+                    ? "PC 를 꺼도 앱과 데이터가 살아 있어요. 전환하는 동안 잠깐 앱이 응답하지 않아요."
+                    : "클라우드에 있는 동안 바뀐 데이터·스키마를 내 PC DB 에 덮어써요. 전환하는 동안 잠깐 앱이 응답하지 않아요."}
                 </p>
                 <Button variant="ghost" className="h-auto min-h-10 py-2 text-left" disabled={busy} onClick={() => void move(confirmHome, false)}>
                   {confirmHome === "cloud" ? "DB 는 내 PC 에 두고 전환" : "DB 는 RDS 에 두고 전환"}
