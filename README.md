@@ -321,6 +321,16 @@ GitHub App 설치 또는 별도 GitHub 자격 증명·권한 연동이 필요합
 브라우저: http://localhost:3210/dashboard
 ```
 
+클러스터 API가 내부 전용이면 k3s 호스트에서 각각 `kubectl -n lily-system port-forward
+svc/lily-observer 18071:80`, `kubectl -n lily-system port-forward svc/db-provisioner
+18072:80`을 실행하고, SSH 터널로 해당 포트를 로컬까지 전달합니다. 프런트의
+`.env.local`에는 `OBSERVABILITY_URL=http://127.0.0.1:18071`,
+`PROVISIONER_URL=http://127.0.0.1:18072`와 서버 전용 `PROVISIONER_API_TOKEN`을
+설정합니다. 토큰은 클러스터의 `db-provisioner-env` Secret에서 권한 있는 담당자가
+확인하며 Git에 저장하지 않습니다. 현재 클러스터에는 `lily-ingress` API Service가
+없으므로 `INGRESS_API_URL`은 비워 둡니다. 공개 앱 주소는 observer 응답으로 볼 수
+있고, 라우트 세부 정보는 ingress API가 설치된 뒤 확인할 수 있습니다.
+
 대시보드는 [lily-monitoring-dashboard](https://github.com/SoftBank-team-lily/lily-monitoring-dashboard)의
 별도 앱입니다. `basePath=/dashboard`로 빌드하며 `/dashboard/_next/*`와 정적 파일도 같은 경로로 전달합니다.
 로그인 후 내 프로젝트 목록이나 `/dashboard?project=<UUID>`로 접근합니다. 명시적 데모는 `/dashboard/demo`입니다.
