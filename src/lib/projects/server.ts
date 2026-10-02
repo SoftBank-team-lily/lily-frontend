@@ -16,7 +16,17 @@ import type {
 } from "./types";
 import type { BurstInput, ProjectFix, ProjectUpdate } from "./schema";
 import { autoFixAttempt } from "@/lib/builder/run";
-import { appAction, burstStatus, clusterApps, moveHome, routeUpstream, runtimeOf, sendBurst, type BurstStatus } from "./apps";
+import {
+  appAction,
+  burstStatus,
+  cancelHome,
+  clusterApps,
+  moveHome,
+  routeUpstream,
+  runtimeOf,
+  sendBurst,
+  type BurstStatus,
+} from "./apps";
 import { getAgent } from "@/lib/agents/server";
 import type { AppRuntime, BurstLive, ProjectBurst } from "./types";
 import { databaseMoveOffer } from "./burst";
@@ -78,10 +88,14 @@ async function burstOf(row: Row, live: BurstStatus | null): Promise<ProjectBurst
   if (!live.supported) return { ...desired, agent: "outdated", live: null };
   if (!live.state) return { ...desired, agent: "waiting", live: null };
   const state = live.state;
-  if (state.enabled !== desired.enabled || state.cloudPercent !== desired.cloudPercent)
+  // 거점을 옮기는 중에는 에이전트가 켜기·끄기를 받지 않는다. 끝난 뒤에 맞춘다
+  if (
+    !state.home.startsWith("MOVING") &&
+    (state.enabled !== desired.enabled || state.cloudPercent !== desired.cloudPercent)
+  )
     await sendBurst(row.app_name, desired.enabled, desired.cloudPercent).catch(() => undefined);
   await followDatabase(row, state);
-  return { ...desired, agent: "connected", live: state };
+  return { ...desired, agent: "connected", live: state, builds: live.builds ?? {} };
 }
 /**
  * 거점 전환이 DB 를 옮겼으면(내 PC ↔ RDS) 프로젝트의 DB 위치를 에이전트 값으로 맞춘다.
@@ -212,6 +226,14 @@ function requireBurstable(row: Row): asserts row is Row & { app_name: string } {
 export async function updateBurst(ownerId: string, id: string, input: BurstInput) {
   const row = await projectRow(ownerId, id);
   requireBurstable(row);
+  // 거점 전환도 클라우드 대기 배포를 한다. 겹치면 늦게 끝난 쪽이 클라우드를 0 으로 내릴 수 있다
+  const live = await burstStatus(row.app_name);
+  if (live?.state?.home.startsWith("MOVING"))
+    throw new ApiError(
+      409,
+      "MOVING",
+      "공개 주소를 옮기는 중이라 버스팅을 바꿀 수 없어요. 끝나거나 옮기기를 취소한 뒤 바꿔 주세요.",
+    );
   await db.query(
     "UPDATE projects SET burst_enabled=$3, burst_cloud_percent=$4 WHERE id=$1 AND owner_id=$2",
     [id, ownerId, input.enabled, input.cloudPercent],
@@ -238,6 +260,12 @@ export async function startHomeMove(
     throw new ApiError(409, "NOT_MOVABLE", "이 에이전트는 거점을 옮길 수 없어요. 연결 명령으로 에이전트를 다시 실행해 주세요.");
   if (live.state.home.startsWith("MOVING"))
     throw new ApiError(409, "MOVING", "이미 옮기는 중이에요.");
+  if (live.state.phase === "STANDBY")
+    throw new ApiError(
+      409,
+      "BURST_STANDBY",
+      "버스팅 대기 배포가 진행 중이에요. 끝나거나 대기 배포를 취소한 뒤 옮겨 주세요.",
+    );
   if (migrateDatabase && !databaseMoveOffer(live.state, home))
     throw new ApiError(
       409,
@@ -245,6 +273,22 @@ export async function startHomeMove(
       "이 앱의 DB 는 옮길 수 없어요. postgres 이고 DB 가 출발하는 쪽(내 PC 또는 RDS)에 있어야 해요.",
     );
   moveHome(row.app_name, home, migrateDatabase);
+  return getProject(ownerId, id, true);
+}
+/** 진행 중인 거점 전환을 멈춘다. 주소를 바꾸기 전이면 출발 거점으로 되돌아가고, 결과는 burst.live 로 본다 */
+export async function cancelHomeMove(ownerId: string, id: string) {
+  const row = await projectRow(ownerId, id);
+  requireBurstable(row);
+  const live = await burstStatus(row.app_name);
+  if (!live?.state?.home.startsWith("MOVING"))
+    throw new ApiError(409, "NOT_MOVING", "옮기는 중이 아니에요.");
+  if (!live.state.homeCancellable)
+    throw new ApiError(
+      409,
+      "NOT_CANCELLABLE",
+      "공개 주소를 이미 바꿔서 취소할 수 없어요. 끝난 뒤 반대로 옮겨 주세요.",
+    );
+  await cancelHome(row.app_name);
   return getProject(ownerId, id, true);
 }
 /** 중지·시작·삭제 전에 본다. 배포가 진행 중이면 실행기가 곧 앱을 다시 만들거나 바꾼다 */

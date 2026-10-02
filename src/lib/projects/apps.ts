@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime, BurstLive } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -47,8 +47,38 @@ export async function clusterApps(): Promise<Map<string, AppRuntime> | null> {
   }
 }
 
-/** builder 가 돌려주는 버스팅 상태. state 는 에이전트가 보낸 burst-state 그대로다 */
-export type BurstStatus = { connected: boolean; supported: boolean; state: BurstLive | null };
+/** builder 가 돌려주는 버스팅 상태. state 는 에이전트가 보낸 burst-state 그대로, builds 는 에이전트가 기다리는 클라우드 빌드 */
+export type BurstStatus = {
+  connected: boolean;
+  supported: boolean;
+  state: BurstLive | null;
+  builds?: { standbyBuild?: BuildProgress; homeBuild?: BuildProgress };
+};
+
+/**
+ * 진행 중인 거점 전환을 멈춘다. 주소를 바꾸기 전이면 에이전트가 출발 거점으로 되돌린다.
+ * @throws ApiError 에이전트가 끊겼거나 취소를 모르는 판(409), builder 가 실패
+ */
+export async function cancelHome(appName: string) {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/home/cancel`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 404)
+    throw new ApiError(409, "NO_AGENT", "이 앱을 배포한 에이전트를 찾지 못했어요.");
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new ApiError(409, "AGENT_UNAVAILABLE", agentMessage(body?.message));
+  }
+  if (!response.ok) {
+    console.error(`builder home cancel ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+}
 
 /** 온프레미스 앱의 버스팅·거점 상태. 에이전트를 찾지 못했으면 connected=false, 확인하지 못했으면 null */
 export async function burstStatus(appName: string): Promise<BurstStatus | null> {

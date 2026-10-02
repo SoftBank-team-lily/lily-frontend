@@ -2,9 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { projectRequest, ProjectError } from "@/lib/projects/client";
-import { burstBlocker, burstSummary, databaseMoveOffer, homeLabels } from "@/lib/projects/burst";
+import {
+  activities,
+  burstBlocker,
+  burstLock,
+  burstSummary,
+  databaseMoveOffer,
+  homeLabels,
+  homeLock,
+} from "@/lib/projects/burst";
 import type { Project, ProjectBurst } from "@/lib/projects/types";
 import { Button } from "@/components/ui/Button";
+import { ActivityProgress } from "./ActivityProgress";
 
 /** 슬라이더를 멈추고 이만큼 지나면 보낸다. 끄는 중간 값마다 보내지 않는다 */
 const COMMIT_MS = 500;
@@ -14,6 +23,7 @@ const COMMIT_MS = 500;
  * 켜면 클라우드에 대기 Pod 1대를 두고, 슬라이더 비율만큼 요청을 클라우드로 보낸다 (0% 면 넘칠 때만).
  * 거점 전환은 공개 주소(CNAME) 자체를 클라우드로 옮긴다. 내 PC 가 꺼져도 주소가 산다.
  * DB 가 출발 쪽(클라우드로 갈 때 내 PC, 돌아올 때 RDS)에 있으면 DB 도 옮길지 고르게 한다.
+ * 둘 다 클라우드 대기 배포를 하므로 한쪽이 진행 중이면 다른 쪽을 막고, 진행 단계·경과 시간과 취소를 보인다.
  */
 export function BurstPanel({
   project,
@@ -45,6 +55,11 @@ export function BurstPanel({
   const ready = Boolean(live?.enabled && live.warm && live.home === "ONPREM");
   const home = live?.home ?? null;
   const moving = home === "MOVING_TO_CLOUD" || home === "MOVING_TO_ONPREM";
+  const running = activities(burst);
+  /** 버스팅을 지금 못 바꾸는 이유 (거점 전환 중) */
+  const locked = burstLock(burst);
+  /** 거점을 지금 못 옮기는 이유 (버스팅 대기 배포 중) */
+  const homeLocked = homeLock(burst);
 
   async function send(operation: () => Promise<Project>) {
     setBusy(true);
@@ -83,6 +98,10 @@ export function BurstPanel({
       }),
     ).then(() => setConfirmHome(null));
   const offer = confirmHome ? databaseMoveOffer(live, confirmHome) : false;
+  const cancelHome = () =>
+    send(() =>
+      projectRequest<Project>(`/api/projects/${project.id}/home/cancel`, { method: "POST" }),
+    );
 
   return (
     <section className="mt-4 rounded-xl border border-line p-4 text-caption" aria-label="클라우드 버스팅">
@@ -94,13 +113,28 @@ export function BurstPanel({
         <Button
           variant={burst.enabled ? "ghost" : "primary"}
           className="h-10"
-          disabled={busy || !usable}
+          disabled={busy || !usable || Boolean(locked)}
+          title={locked ?? undefined}
           onClick={() => void save(!burst.enabled, burst.cloudPercent)}
         >
           {burst.enabled ? "끄기" : "켜기"}
         </Button>
       </div>
       {blocker && <p className="mt-2 text-mute">{blocker}</p>}
+      {running.map((activity) => (
+        <ActivityProgress
+          key={activity.kind}
+          activity={activity}
+          busy={busy}
+          onCancel={() => void (activity.kind === "home" ? cancelHome() : save(false, burst.cloudPercent))}
+        />
+      ))}
+      {running.length > 1 && (
+        <p className="mt-2 text-warning">
+          두 작업이 같이 돌고 있어요. 늦게 끝난 쪽이 클라우드 Pod 를 내릴 수 있으니 하나를 취소해 주세요.
+        </p>
+      )}
+      {locked && <p className="mt-2 text-mute">{locked}</p>}
       {burst.enabled && (
         <div className="mt-4">
           <label htmlFor={`burst-${project.id}`} className="flex items-center justify-between gap-3 text-ink">
@@ -114,7 +148,7 @@ export function BurstPanel({
             max={100}
             step={5}
             value={draft}
-            disabled={busy || !usable || !ready}
+            disabled={busy || !usable || !ready || Boolean(locked)}
             onChange={(event) => slide(Number(event.target.value))}
             aria-valuetext={`클라우드 ${draft}%`}
             className="mt-2 w-full accent-accent disabled:opacity-40"
@@ -140,7 +174,8 @@ export function BurstPanel({
             {live?.movable && !moving && (home === "ONPREM" || home === "CLOUD") && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || Boolean(homeLocked)}
+                title={homeLocked ?? undefined}
                 onClick={() => setConfirmHome(home === "ONPREM" ? "cloud" : "onprem")}
                 className="text-mute hover:text-ink disabled:opacity-40"
               >
@@ -148,11 +183,12 @@ export function BurstPanel({
               </button>
             )}
           </div>
+          {homeLocked && !moving && <p className="mt-1 text-mute">{homeLocked}</p>}
           {live?.databaseMode === "local" || live?.databaseMode === "cloud" ? (
             <p className="mt-1 text-mute">DB · {live.databaseMode === "local" ? "내 PC" : "클라우드(RDS)"}</p>
           ) : null}
           {live?.homeEvent && <p className="mt-1 break-words text-mute">최근: {live.homeEvent}</p>}
-          {confirmHome && !offer && (
+          {confirmHome && !offer && !homeLocked && (
             <div className="mt-3 rounded-xl border border-line p-3">
               <p className="text-ink">
                 {confirmHome === "cloud"
@@ -169,7 +205,7 @@ export function BurstPanel({
               </div>
             </div>
           )}
-          {confirmHome && offer && (
+          {confirmHome && offer && !homeLocked && (
             <div className="mt-3 rounded-xl border border-line p-3" role="group" aria-label="DB 도 옮길까요">
               <p className="text-ink">
                 {confirmHome === "cloud"
