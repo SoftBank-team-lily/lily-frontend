@@ -8,6 +8,7 @@ import type {
   Deployment,
   DeploymentStatus,
   DeployTarget,
+  DeploymentMode,
   DeploySettings,
   DatabaseChoice,
   DatabaseLocation,
@@ -37,6 +38,7 @@ type Row = {
   repo: string;
   name: string;
   target: DeployTarget;
+  deployment_mode: DeploymentMode;
   database_location: DatabaseLocation | null;
   burst_enabled: boolean;
   burst_cloud_percent: number;
@@ -61,7 +63,7 @@ type Row = {
   move: "onprem" | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.database_location, p.database, p.app_name AS fixed_app_name,
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.database_location, p.database, p.app_name AS fixed_app_name,
   p.burst_enabled, p.burst_cloud_percent,
   p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
@@ -140,6 +142,7 @@ function project(
     repo: row.repo,
     name: row.name,
     target: row.target,
+    deploymentMode: row.deployment_mode ?? "HYBRID",
     databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
     database: row.database ?? null,
     movedFromCloud: row.target === "onprem" && row.fixed_app_name !== null,
@@ -223,6 +226,12 @@ export async function getProject(
 }
 /** 온프레미스 앱이고 에이전트로 보낸 적이 있다 */
 function requireBurstable(row: Row): asserts row is Row & { app_name: string } {
+  if (row.deployment_mode === "ONPREM_ONLY")
+    throw new ApiError(
+      409,
+      "ONPREM_ONLY",
+      "온프레미스 전용은 버스팅과 거점 전환을 쓰지 않아요. PC 가 꺼지면 서비스도 멈춥니다.",
+    );
   if (row.target !== "onprem")
     throw new ApiError(409, "CLOUD", "클라우드 버스팅은 온프레미스 앱에서만 써요.");
   if (!row.app_name)
@@ -508,6 +517,8 @@ export async function createProject(
   target: DeployTarget = "cloud",
   settings: DeploySettings = {},
 ) {
+  const mode: DeploymentMode = settings.deploymentMode === "ONPREM_ONLY" ? "ONPREM_ONLY" : "HYBRID";
+  if (mode === "ONPREM_ONLY") target = "onprem";
   if (target === "onprem") {
     // 에이전트 하나는 공개 주소 하나, 앱 하나만 띄운다 (lily-on-premise)
     const existing = await db.query<{ name: string }>(
@@ -524,9 +535,9 @@ export async function createProject(
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
-    `INSERT INTO projects(id, owner_id, repo, name, target, branch, root_dir, port, health_path, env, database,
+    `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, branch, root_dir, port, health_path, env, database,
       database_location, database_url)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       id,
       ownerId,
@@ -534,6 +545,7 @@ export async function createProject(
       // 한 레포의 폴더마다 등록하면 이름으로 구분되게 폴더를 붙인다
       name ?? (rootDir ? `${repo.split("/")[1]}/${rootDir}` : repo.split("/")[1]),
       target,
+      mode,
       settings.branch || null,
       rootDir,
       settings.port ?? null,
@@ -541,8 +553,16 @@ export async function createProject(
       JSON.stringify(await resolveEnv(ownerId, repo, null, settings)),
       settings.database ?? null,
       // DB 가 없는 앱이면 위치도 없다
-      target === "onprem" && settings.database !== "none" ? (settings.databaseLocation ?? null) : null,
-      target === "onprem" && settings.databaseLocation === "external" ? (settings.databaseUrl ?? null) : null,
+      mode === "ONPREM_ONLY"
+        ? settings.database && settings.database !== "none"
+          ? "local"
+          : null
+        : target === "onprem" && settings.database !== "none"
+          ? (settings.databaseLocation ?? null)
+          : null,
+      mode !== "ONPREM_ONLY" && target === "onprem" && settings.databaseLocation === "external"
+        ? (settings.databaseUrl ?? null)
+        : null,
     ],
   );
   return getProject(ownerId, id);
@@ -553,6 +573,17 @@ export async function updateProject(
   id: string,
   input: ProjectUpdate,
 ) {
+  if (input.deploymentMode !== undefined) {
+    const row = await projectRow(ownerId, id);
+    if (input.deploymentMode !== (row.deployment_mode ?? "HYBRID"))
+      throw new ApiError(
+        409,
+        "MODE_LOCKED",
+        "배포 모드는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
+      );
+  }
+  const { deploymentMode: _mode, ...rest } = input;
+  if (Object.keys(rest).length === 0) return getProject(ownerId, id);
   const values: unknown[] = [id, ownerId];
   const sets: string[] = [];
   const set = (column: string, value: unknown) => {

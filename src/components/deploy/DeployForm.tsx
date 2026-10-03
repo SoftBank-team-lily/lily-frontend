@@ -8,7 +8,7 @@ import { DeploySettingsFields } from "@/components/projects/DeploySettingsFields
 import { TargetChoice } from "@/components/projects/TargetChoice";
 import { AgentPanel } from "@/components/projects/AgentPanel";
 import type { AgentState } from "@/lib/agents/types";
-import type { DeployTarget } from "@/lib/projects/types";
+import type { DeploymentMode, DeployTarget } from "@/lib/projects/types";
 
 type Props = {
   repo: string;
@@ -19,6 +19,8 @@ type Props = {
   onSubmit?: FormEventHandler<HTMLFormElement>;
   target?: DeployTarget;
   onTargetChange?: (value: DeployTarget) => void;
+  mode?: DeploymentMode;
+  onModeChange?: (mode: DeploymentMode) => void;
   /** 온프레미스 에이전트 연결 상태 */
   onAgentChange?: (agent: AgentState) => void;
   onNeedLogin?: () => void;
@@ -35,6 +37,8 @@ export function DeployForm({
   onSubmit,
   target = "cloud",
   onTargetChange,
+  mode = "HYBRID",
+  onModeChange,
   onAgentChange,
   onNeedLogin,
   waitingAgent,
@@ -65,9 +69,14 @@ export function DeployForm({
           </Button>
         </div>
         {onTargetChange && (
-          <TargetChoice value={target} onChange={onTargetChange} />
+          <TargetChoice
+            value={target}
+            onChange={onTargetChange}
+            mode={mode}
+            onModeChange={onModeChange}
+          />
         )}
-        {target === "onprem" && onAgentChange && (
+        {(target === "onprem" || mode === "ONPREM_ONLY") && onAgentChange && (
           <AgentPanel onChange={onAgentChange} onNeedLogin={onNeedLogin} />
         )}
         {waitingAgent && (

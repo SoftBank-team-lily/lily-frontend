@@ -6,6 +6,11 @@ export type DeploymentStatus =
   | "rolled-back";
 /** 배포 위치. cloud: 플랫폼 클러스터, onprem: 사용자 PC 의 에이전트 */
 export type DeployTarget = "cloud" | "onprem";
+/**
+ * HYBRID: DB 는 RDS 이고 거점만 바뀐다. 버스팅·거점 전환을 쓴다.
+ * ONPREM_ONLY: DB 와 요청 모두 내 PC. 버스팅·거점 전환이 없다.
+ */
+export type DeploymentMode = "HYBRID" | "ONPREM_ONLY";
 /** 앱 DB. none: DB 없이 배포 */
 export type DatabaseChoice = "postgres" | "mysql" | "none";
 /**
@@ -24,6 +29,8 @@ export type DeploySettings = {
   database?: DatabaseChoice;
   /** 온프레미스 DB 위치. 등록할 때만 정한다 */
   databaseLocation?: DatabaseLocation;
+  /** 등록할 때만 정한다. 비우면 HYBRID */
+  deploymentMode?: DeploymentMode;
   /** databaseLocation 이 external 일 때 DB 주소 (비밀번호 포함, 돌려주지 않는다) */
   databaseUrl?: string;
   /** 서버가 랜덤 값을 만들어 넣을 환경변수 (JWT 서명 키 같은 앱 내부 비밀값) */
@@ -161,6 +168,8 @@ export type Project = {
   repo: string;
   name: string;
   target: DeployTarget;
+  /** 만든 뒤에는 바꾸지 않는다. 이 필드 전의 프로젝트는 HYBRID */
+  deploymentMode: DeploymentMode;
   /** 앱이 있는 하위 폴더. 레포 루트면 "" */
   rootDir: string;
   /** 배포 설정. null 이면 builder 가 레포를 보고 정한다 */

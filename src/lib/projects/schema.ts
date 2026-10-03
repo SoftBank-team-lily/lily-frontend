@@ -66,6 +66,7 @@ export const projectSchema = z
     repo: repoSchema,
     name: nameSchema.optional(),
     target: z.enum(["cloud", "onprem"]).optional(),
+    deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
     ...settingsShape(),
     // 등록할 때만 받는다. 바꾸면 tenant DB 가 엔진마다 따로 생겨서 updateSchema 에는 없다
     database: databaseSchema.optional(),
@@ -82,8 +83,12 @@ export const projectSchema = z
       ctx.addIssue({ code: "custom", message: "사용할 DB 주소를 넣어 주세요." });
     if (value.databaseUrl && value.databaseLocation !== "external")
       ctx.addIssue({ code: "custom", message: "DB 주소는 '이미 있는 DB'를 고를 때만 넣어요." });
-    if (value.databaseLocation && value.target !== "onprem")
+    if (value.databaseLocation && value.target !== "onprem" && value.deploymentMode !== "ONPREM_ONLY")
       ctx.addIssue({ code: "custom", message: "DB 위치는 온프레미스 프로젝트만 정해요." });
+    if (value.deploymentMode === "ONPREM_ONLY" && value.target === "cloud")
+      ctx.addIssue({ code: "custom", message: "온프레미스 전용은 내 PC 에만 배포해요." });
+    if (value.deploymentMode === "ONPREM_ONLY" && value.databaseLocation && value.databaseLocation !== "local")
+      ctx.addIssue({ code: "custom", message: "온프레미스 전용 DB 는 내 PC 에만 둘 수 있어요." });
     if (value.databaseUrl && value.database && value.database !== "none") {
       const engine = value.databaseUrl.startsWith("mysql:") ? "mysql" : "postgres";
       if (engine !== value.database)
@@ -132,6 +137,7 @@ export const updateSchema = z
     healthPath: healthPathSchema.nullable().optional(),
     env: envSchema.optional(),
     removeEnv: z.array(envKeySchema).max(50).optional(),
+    deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "바꿀 내용이 없어요.");

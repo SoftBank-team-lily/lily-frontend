@@ -743,5 +743,16 @@
   "DB 이력을 읽지 못했어요.": "Couldn't read the database history.",
   "DB 를 쓰지 않는 앱이에요.": "This app doesn't use a database.",
   "열린 롤백 창이 없거나 배포·롤백이 진행 중이에요.": "There's no open rollback window, or a deploy or rollback is in progress.",
-  "클라우드에 배포한 앱만 스키마 롤백 창을 닫을 수 있어요.": "Only apps deployed to the cloud have a schema rollback window."
+  "클라우드에 배포한 앱만 스키마 롤백 창을 닫을 수 있어요.": "Only apps deployed to the cloud have a schema rollback window.",
+  "배포 모드": "Deployment mode",
+  "하이브리드": "Hybrid",
+  "클라우드와 내 PC 를 오갈 수 있고, 넘친 요청은 클라우드가 받아요. DB 는 AWS 에 있어요.": "You can move between the cloud and this PC, and overflow goes to the cloud. The database stays on AWS.",
+  "온프레미스 전용": "On-premises only",
+  "데이터는 내 PC 밖으로 나가지 않아요. 버스팅은 없고, PC 가 꺼지면 서비스도 멈춥니다.": "Data does not leave this PC. There is no bursting, and the service stops when the PC is off.",
+  "거점": "Home",
+  "배포 모드는 프로젝트를 만든 뒤에 바꿀 수 없어요.": "The deployment mode cannot be changed after the project is created.",
+  "온프레미스 전용은 버스팅과 거점 전환을 쓰지 않아요. PC 가 꺼지면 서비스도 멈춥니다.": "On-premises only does not use bursting or home switching. The service stops when the PC is off.",
+  "온프레미스 전용은 내 PC 에만 배포해요.": "On-premises only deploys to this PC.",
+  "온프레미스 전용 DB 는 내 PC 에만 둘 수 있어요.": "An on-premises-only database can only live on this PC.",
+  "온프레미스 전용이에요. 데이터는 이 PC 에 있고, 버스팅과 거점 전환은 없어요. PC 가 꺼지면 서비스도 멈춥니다. TLS 는 Cloudflare 에서 끝나요.": "This project is on-premises only. Data stays on this PC, with no bursting or home switch. The service stops when the PC is off. TLS ends at Cloudflare."
 }

@@ -22,6 +22,7 @@ import {
 import { findProject, otherTarget } from "@/lib/deploy/realDeploy";
 import type {
   Detection,
+  DeploymentMode,
   DeploySettings,
   DeployTarget,
   Project,
@@ -81,9 +82,11 @@ export function LandingPage({
     settings: DeploySettings;
     target: DeployTarget;
   } | null>(null);
+  const [mode, setMode] = useState<DeploymentMode>("HYBRID");
   const [target, setTarget] = useState<DeployTarget>("cloud");
   const [agent, setAgent] = useState<AgentState>(null);
-  const waitingAgent = target === "onprem" && !agent?.connected;
+  const place = mode === "ONPREM_ONLY" ? "onprem" : target;
+  const waitingAgent = place === "onprem" && !agent?.connected;
   const nav = useRef<HTMLElement>(null);
   const section = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -155,9 +158,12 @@ export function LandingPage({
       input.current?.focus();
       return;
     }
-    let settings;
+    let settings: DeploySettings;
     try {
-      settings = readSettings(new FormData(event.currentTarget));
+      settings = {
+        ...readSettings(new FormData(event.currentTarget)),
+        deploymentMode: mode,
+      };
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : REPO_ERROR);
       return;
@@ -169,7 +175,13 @@ export function LandingPage({
     try {
       const existing = await findProject(parsed, settings.rootDir);
       if (existing) {
-        const conflict = otherTarget(existing, target);
+        if ((existing.deploymentMode ?? "HYBRID") !== mode)
+          throw new ProjectError(
+            409,
+            "MODE_LOCKED",
+            "배포 모드는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
+          );
+        const conflict = otherTarget(existing, place);
         if (conflict) throw conflict;
         if (existing.latestDeployment?.status !== "failed") {
           launch(parsed, settings);
@@ -192,8 +204,8 @@ export function LandingPage({
     }
   }
   function launch(repoRef: string, settings: DeploySettings) {
-    last.current = { repo: repoRef, settings, target };
-    start(repoRef, settings, target);
+    last.current = { repo: repoRef, settings, target: place };
+    start(repoRef, settings, place);
   }
   /** 확인 창에서 고른 값으로 등록(새 프로젝트)하거나 고친 뒤(실패했던 프로젝트) 배포한다 */
   async function confirm(picked: DeployChoice) {
@@ -326,6 +338,11 @@ export function LandingPage({
                 onSubmit={submit}
                 target={target}
                 onTargetChange={setTarget}
+                mode={mode}
+                onModeChange={(next) => {
+                  setMode(next);
+                  if (next === "ONPREM_ONLY") setTarget("onprem");
+                }}
                 onAgentChange={setAgent}
                 onNeedLogin={onNeedLogin}
                 waitingAgent={waitingAgent}
@@ -335,7 +352,8 @@ export function LandingPage({
               <DeployCheckDialog
                 detection={choice.detection}
                 // DB 위치는 등록할 때만 정한다 (고쳐서 다시 배포할 때는 묻지 않는다)
-                target={choice.existing ? undefined : target}
+                target={choice.existing ? undefined : place}
+                deploymentMode={choice.existing ? undefined : mode}
                 savedKeys={choice.existing?.envKeys}
                 confirmLabel={
                   choice.existing ? t("고쳐서 다시 배포") : t("생성")

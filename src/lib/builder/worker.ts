@@ -86,13 +86,14 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         database: DatabaseChoice | null;
         database_location: DatabaseLocation | null;
         database_url: string | null;
+        deployment_mode: "HYBRID" | "ONPREM_ONLY";
         app_name: string | null;
         move: "onprem" | null;
         move_database: "cloud" | "local" | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
           p.branch, p.root_dir, p.port, p.health_path, p.env, p.database,
-          p.database_location, p.database_url, p.app_name, d.move, d.move_database FROM deployments d
+          p.database_location, p.database_url, p.deployment_mode, p.app_name, d.move, d.move_database FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -137,9 +138,14 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           healthPath: row.health_path,
           env: row.env,
           database: row.database,
-          ...(row.target === "onprem"
-            ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
-            : {}),
+          deploymentMode: row.deployment_mode ?? "HYBRID",
+          ...(row.deployment_mode === "ONPREM_ONLY"
+            ? row.database && row.database !== "none"
+              ? { databaseLocation: "local" as const }
+              : {}
+            : row.target === "onprem"
+              ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
+              : {}),
         },
         };
       });

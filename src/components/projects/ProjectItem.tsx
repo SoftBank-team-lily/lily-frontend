@@ -217,7 +217,10 @@ export function ProjectItem({
           : t("{{value0}} 배포", {
               value0: t(targetLabels[project.target]),
             })}{" "}
-        · {project.movedFromCloud && <>{t("클라우드 주소 그대로 ·")} </>}
+        · {project.deploymentMode === "ONPREM_ONLY" && (
+          <>{t("온프레미스 전용")} · </>
+        )}
+        {project.movedFromCloud && <>{t("클라우드 주소 그대로 ·")} </>}
         {project.databaseLocation && (
           <>{t(locationLabels[project.databaseLocation])} · </>
         )}

@@ -80,6 +80,8 @@ export type DeploySettings = {
   databaseUrl?: string | null;
   /** local 일 때 같은 앱 이름의 클라우드 RDS 데이터를 내 PC DB 로 옮긴다 (클라우드 앱을 옮길 때) */
   importDatabase?: boolean;
+  /** HYBRID(기본) 또는 ONPREM_ONLY */
+  deploymentMode?: "HYBRID" | "ONPREM_ONLY";
 };
 
 export type RunDeps = {
@@ -350,12 +352,21 @@ export function buildSettings(settings: DeploySettings | undefined) {
     ...(settings.database
       ? { database: settings.database === "none" ? "" : settings.database }
       : {}),
-    // 온프레미스 DB 위치 (lily-builder BuildRequest.databaseMode). 클라우드 프로젝트는 비어 있다
-    ...(settings.databaseLocation ? { databaseMode: settings.databaseLocation } : {}),
-    ...(settings.databaseLocation === "external" && settings.databaseUrl
-      ? { databaseUrl: settings.databaseUrl }
-      : {}),
-    ...(settings.databaseLocation === "local" && settings.importDatabase ? { importDatabase: true } : {}),
+    ...(settings.deploymentMode ? { deploymentMode: settings.deploymentMode } : {}),
+    // 온프레미스 전용은 DB 를 내 PC 에만 둔다. RDS 터널과 데이터 옮기기는 보내지 않는다
+    ...(settings.deploymentMode === "ONPREM_ONLY"
+      ? settings.database && settings.database !== "none"
+        ? { databaseMode: "local" as const }
+        : {}
+      : {
+          ...(settings.databaseLocation ? { databaseMode: settings.databaseLocation } : {}),
+          ...(settings.databaseLocation === "external" && settings.databaseUrl
+            ? { databaseUrl: settings.databaseUrl }
+            : {}),
+          ...(settings.databaseLocation === "local" && settings.importDatabase
+            ? { importDatabase: true }
+            : {}),
+        }),
   };
 }
 

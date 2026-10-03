@@ -7,6 +7,7 @@ import type {
   ConfigAdvice,
   DatabaseChoice,
   DatabaseLocation,
+  DeploymentMode,
   DeployTarget,
   Detection,
 } from "@/lib/projects/types";
@@ -112,6 +113,7 @@ export function choiceOf(
 export function DeployCheckDialog({
   detection: first,
   target = "cloud",
+  deploymentMode,
   savedKeys = [],
   confirmLabel = "생성",
   onCancel,
@@ -121,6 +123,7 @@ export function DeployCheckDialog({
   detection: Detection;
   /** 온프레미스면 DB 위치를 묻는다 */
   target?: DeployTarget;
+  deploymentMode?: DeploymentMode;
   savedKeys?: string[];
   confirmLabel?: string;
   onCancel: () => void;
@@ -138,7 +141,8 @@ export function DeployCheckDialog({
   const [database, setDatabase] = useState<DatabaseChoice>(first.database);
   const [location, setLocation] = useState<DatabaseLocation>("local");
   const [databaseUrl, setDatabaseUrl] = useState("");
-  const asksLocation = target === "onprem" && database !== "none";
+  const only = deploymentMode === "ONPREM_ONLY";
+  const asksLocation = !only && target === "onprem" && database !== "none";
   const engineOfUrl = databaseUrl.trim().startsWith("mysql:")
     ? "mysql"
     : "postgres";
@@ -374,7 +378,9 @@ export function DeployCheckDialog({
                   database,
                   first.apps.length > 1 ? rootDir : undefined,
                 ),
-                ...(asksLocation
+                ...(only && database !== "none"
+                  ? { databaseLocation: "local" as const }
+                  : asksLocation
                   ? {
                       databaseLocation: location,
                       ...(location === "external"

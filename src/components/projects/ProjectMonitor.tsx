@@ -222,7 +222,15 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
         </p>
       </section>
 
-      {onprem && project.burst && (
+      {onprem && project.deploymentMode === "ONPREM_ONLY" && (
+        <p className="mt-6 text-control text-mute">
+          {t(
+            "온프레미스 전용이에요. 데이터는 이 PC 에 있고, 버스팅과 거점 전환은 없어요. PC 가 꺼지면 서비스도 멈춥니다. TLS 는 Cloudflare 에서 끝나요.",
+          )}
+        </p>
+      )}
+
+      {onprem && project.deploymentMode !== "ONPREM_ONLY" && project.burst && (
         <section aria-label={t("거점과 트래픽 조절")}>
           <StatusOverview project={project} onUpdate={setProject} />
           <BurstPanel

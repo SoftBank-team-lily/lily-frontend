@@ -10,6 +10,7 @@ import {
 } from "@/lib/projects/client";
 import type {
   Detection,
+  DeploymentMode,
   DeployTarget,
   Project,
   ProjectPage,
@@ -44,6 +45,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   const [page, setPage] = useState(initialPage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<DeploymentMode>("HYBRID");
   const [target, setTarget] = useState<DeployTarget>("cloud");
   /** 등록 폼. 처음에는 이미 올린 프로젝트만 보이고, 새 프로젝트를 누르면 연다 */
   const [creating, setCreating] = useState(false);
@@ -81,7 +83,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
     }, REFRESH_MS);
     return () => clearInterval(timer);
   }, [watching]);
-  const waitingAgent = target === "onprem" && !agent?.connected;
+  const place = mode === "ONPREM_ONLY" ? "onprem" : target;
+  const waitingAgent = place === "onprem" && !agent?.connected;
   async function request(operation: (signal: AbortSignal) => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -120,7 +123,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
     }
     const body = {
       repo: String(data.get("repo")),
-      target,
+      target: place,
+      deploymentMode: mode,
       ...settings,
       ...(String(data.get("name") ?? "").trim()
         ? { name: String(data.get("name")).trim() }
@@ -238,8 +242,16 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
                 maxLength={100}
               />
               <DeploySettingsFields />
-              <TargetChoice value={target} onChange={setTarget} />
-              {target === "onprem" && <AgentPanel onChange={setAgent} />}
+              <TargetChoice
+                value={target}
+                onChange={setTarget}
+                mode={mode}
+                onModeChange={(next) => {
+                  setMode(next);
+                  if (next === "ONPREM_ONLY") setTarget("onprem");
+                }}
+              />
+              {place === "onprem" && <AgentPanel onChange={setAgent} />}
               <Button type="submit" variant="ghost" disabled={waitingAgent}>
                 {busy ? t("처리 중…") : t("프로젝트 등록")}
               </Button>
@@ -259,6 +271,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         <DeployCheckDialog
           detection={choice.detection}
           target={choice.body.target as DeployTarget}
+          deploymentMode={choice.body.deploymentMode as DeploymentMode}
           onCancel={() => setChoice(null)}
           onConfirm={(picked) => void confirm(picked)}
           redetect={(dir) =>
