@@ -82,6 +82,38 @@ export async function cancelHome(appName: string) {
   }
 }
 
+/**
+ * 진행 중인 빌드를 멈춘다 (lily-builder POST /api/builds/{id}/cancel).
+ * @return builder 가 멈췄으면 true, builder 에 그 빌드가 없으면 false
+ * @throws ApiError 이미 멈출 수 없는 단계(409 NOT_CANCELLABLE), builder 가 실패
+ */
+export async function cancelBuild(buildId: string) {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/builds/${encodeURIComponent(buildId)}/cancel`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 404) return false;
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new ApiError(
+      409,
+      "NOT_CANCELLABLE",
+      body?.message?.includes("lily-cicd")
+        ? "새 버전을 띄우기 시작해서 취소할 수 없어요. 끝난 뒤 롤백해 주세요."
+        : "이미 끝난 배포라 취소할 수 없어요.",
+    );
+  }
+  if (!response.ok) {
+    console.error(`builder cancel ${buildId}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+  return true;
+}
+
 /** 온프레미스 앱의 버스팅·거점 상태. 에이전트를 찾지 못했으면 connected=false, 확인하지 못했으면 null */
 export async function burstStatus(appName: string): Promise<BurstStatus | null> {
   const base = builderUrl();

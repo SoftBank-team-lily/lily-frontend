@@ -4,7 +4,7 @@
 // queued 배포            → builder POST /api/builds (온프레미스면 /api/agents/{key}/builds) → running
 // builder SUCCEEDED      → succeeded (접속 주소를 남긴다)
 // 실패하면 이유 한 줄을 남긴다 (목록에 보인다)
-// builder FAILED·기록 없음 → failed, ROLLED_BACK → rolled-back
+// builder FAILED·기록 없음 → failed, ROLLED_BACK → rolled-back, CANCELLED(사용자가 멈춤) → cancelled
 // failed 이고 builder 진단(규칙 + AI)에 고칠 방법이 있으면 묻지 않고 설정을 고쳐 다시 배포한다
 //   (비밀값 생성, 기본값, 외부 서비스 키는 unset, 포트·헬스 경로·DB·앱 폴더). 최대 MAX_AUTO_FIX 번,
 //   같은 값으로 또 실패하면 그 전에 멈추고 화면이 원인과 입력 칸을 보인다
@@ -61,7 +61,9 @@ export type Active = {
 };
 /** 옮기기 마무리 결과. url: 그대로 쓰는 클라우드 주소 */
 export type MoveOutcome = { ok: true; url: string } | { ok: false; message: string };
-export type FinalStatus = "succeeded" | "failed" | "rolled-back";
+export type FinalStatus = "succeeded" | "failed" | "rolled-back" | "cancelled";
+/** 취소한 배포에 남기는 결과 한 줄 (목록에 보인다) */
+export const CANCELLED_MESSAGE = "배포를 취소했어요. 트래픽은 이전 버전 그대로예요.";
 
 export class BuilderRejected extends Error {}
 
@@ -122,6 +124,10 @@ export type RunDeps = {
   finishMove?(deploymentId: string, move: Move & { appName: string }, onPremUrl: string | null): Promise<MoveOutcome>;
   /** 내 PC 배포가 실패했다: 내려 둔 클라우드를 다시 띄운다 */
   cancelMove?(move: Move & { appName: string }): Promise<void>;
+  /** 사용자가 이 배포를 취소했다 (cancelled) */
+  cancelled?(deploymentId: string): Promise<boolean>;
+  /** builder 빌드를 멈춘다. 보내는 사이에 취소된 배포의 빌드 */
+  cancelBuild?(buildId: string): Promise<void>;
   /** 등록할 수 있는 레포 소유자. 비어 있으면 모두 */
   allowedOwners: string[];
   maxActive: number;
@@ -158,6 +164,8 @@ export async function runOnce(deps: RunDeps) {
             state?.diagnosis?.cause ?? state?.message ?? "배포 서버에 이 배포 기록이 없어요.",
           diagnosis: state?.diagnosis ?? null,
         });
+      if (result === "cancelled")
+        await deps.saveResult(active.deploymentId, { message: CANCELLED_MESSAGE });
       if (result) {
         await deps.event(active.deploymentId, result);
         log(`배포 ${active.deploymentId}: ${result} (빌드 ${active.buildId})`);
@@ -209,7 +217,17 @@ export async function runOnce(deps: RunDeps) {
       );
       await deps.saveRun(pending.deploymentId, buildId, app);
       log(`배포 ${pending.deploymentId} → 빌드 ${buildId} (${app})`);
-      await deps.event(pending.deploymentId, "running");
+      try {
+        await deps.event(pending.deploymentId, "running");
+      } catch (error) {
+        // builder 로 보내는 사이에 사용자가 취소했다. 막 시작한 빌드를 멈추고 옮기던 클라우드를 되돌린다
+        if (!(await deps.cancelled?.(pending.deploymentId))) throw error;
+        await deps.cancelBuild?.(buildId).catch((problem: unknown) =>
+          log(`배포 ${pending.deploymentId} 빌드 ${buildId} 멈추기 실패: ${message(problem)}`),
+        );
+        if (pending.move) await safeCancel(deps, { ...pending.move, appName: app }, log);
+        log(`배포 ${pending.deploymentId}: 보내는 사이에 취소돼 빌드 ${buildId} 를 멈췄어요`);
+      }
     } catch (error) {
       if (error instanceof BuilderRejected) {
         if (pending.move) await safeCancel(deps, { ...pending.move, appName: app }, log);
@@ -247,6 +265,13 @@ async function settleMove(
     return;
   }
   await safeCancel(deps, move, log);
+  if (result === "cancelled") {
+    await deps.saveResult(active.deploymentId, {
+      message: "내 PC 로 옮기기를 취소해서 클라우드에 그대로 두었어요.",
+    });
+    await deps.event(active.deploymentId, "cancelled");
+    return;
+  }
   await deps.saveResult(active.deploymentId, {
     message: `내 PC 배포에 실패해서 클라우드에 그대로 두었어요. ${
       state?.diagnosis?.cause ?? state?.message ?? ""
@@ -274,6 +299,7 @@ export function finalStatus(builderStatus: string | null): FinalStatus | null {
   if (builderStatus === "SUCCEEDED") return "succeeded";
   if (builderStatus === "FAILED") return "failed";
   if (builderStatus === "ROLLED_BACK") return "rolled-back";
+  if (builderStatus === "CANCELLED") return "cancelled";
   return null;
 }
 

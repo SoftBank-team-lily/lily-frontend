@@ -166,7 +166,7 @@ export const homeSchema = z
 export const eventSchema = z
   .object({
     eventId: z.string().min(1).max(128),
-    status: z.enum(["running", "succeeded", "failed", "rolled-back"]),
+    status: z.enum(["running", "succeeded", "failed", "rolled-back", "cancelled"]),
   })
   .strict();
 export function validate<T>(schema: z.ZodType<T>, value: unknown): T {

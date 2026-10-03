@@ -16,10 +16,11 @@ import type {
   ProjectEntry,
 } from "./types";
 import type { BurstInput, ProjectFix, ProjectUpdate } from "./schema";
-import { autoFixAttempt } from "@/lib/builder/run";
+import { autoFixAttempt, CANCELLED_MESSAGE } from "@/lib/builder/run";
 import {
   appAction,
   burstStatus,
+  cancelBuild,
   cancelHome,
   clusterApps,
   completeSchema,
@@ -334,6 +335,42 @@ export async function cancelHomeMove(ownerId: string, id: string) {
       "공개 주소를 이미 바꿔서 취소할 수 없어요. 끝난 뒤 반대로 옮겨 주세요.",
     );
   await cancelHome(row.app_name);
+  return getProject(ownerId, id, true);
+}
+/**
+ * 진행 중인 배포를 멈춘다. builder 로 보낸 배포는 builder 에 취소를 보내고(클라우드는 lily-cicd 로 넘기기 전,
+ * 내 PC 는 트래픽을 새 버전으로 바꾸기 전까지), 아직 보내지 않은 배포는 바로 cancelled 로 닫는다.
+ * 클라우드 앱을 내 PC 로 옮기던 배포는 실행기가 CANCELLED 를 보고 클라우드를 되돌린 뒤 닫는다.
+ * @throws ApiError 진행 중이 아님(409 NOT_DEPLOYING), 이미 멈출 수 없는 단계(409 NOT_CANCELLABLE)
+ */
+export async function cancelDeployment(ownerId: string, id: string, deploymentId: string) {
+  await projectRow(ownerId, id);
+  const found = await db.query<{ status: DeploymentStatus; move: "onprem" | null; build_id: string | null }>(
+    `SELECT d.status, d.move, r.build_id FROM deployments d
+    LEFT JOIN builder_runs r ON r.deployment_id=d.id WHERE d.id=$1 AND d.project_id=$2`,
+    [deploymentId, id],
+  );
+  const row = found.rows[0];
+  if (!row) throw new ApiError(404, "NOT_FOUND", "배포 기록을 찾을 수 없어요.");
+  if (row.status !== "queued" && row.status !== "running")
+    throw new ApiError(409, "NOT_DEPLOYING", "진행 중인 배포가 아니에요.");
+  // builder 에 기록이 없으면(이미 지워짐) 멈출 작업도 없다. 기록만 닫는다
+  const sent = row.build_id ? await cancelBuild(row.build_id) : false;
+  if (!sent || !row.move) {
+    await db.query(
+      `INSERT INTO builder_runs(deployment_id, build_id, app_name, message) VALUES ($1, NULL, '', $2)
+      ON CONFLICT (deployment_id) DO UPDATE SET message=EXCLUDED.message`,
+      [deploymentId, CANCELLED_MESSAGE],
+    );
+    try {
+      await recordEvent(deploymentId, "user-cancel", "cancelled");
+    } catch (error) {
+      // 실행기가 builder 의 CANCELLED 를 먼저 보고 닫았다
+      if (!(error instanceof ApiError && error.code === "INVALID_TRANSITION")) throw error;
+      const now = await db.query<{ status: DeploymentStatus }>("SELECT status FROM deployments WHERE id=$1", [deploymentId]);
+      if (now.rows[0]?.status !== "cancelled") throw error;
+    }
+  }
   return getProject(ownerId, id, true);
 }
 /** 중지·시작·삭제 전에 본다. 배포가 진행 중이면 실행기가 곧 앱을 다시 만들거나 바꾼다 */
@@ -737,11 +774,12 @@ export async function recordEvent(
       return deployment(row);
     }
     const transitions: Record<DeploymentStatus, string[]> = {
-      queued: ["running", "failed"],
-      running: ["succeeded", "failed", "rolled-back"],
+      queued: ["running", "failed", "cancelled"],
+      running: ["succeeded", "failed", "rolled-back", "cancelled"],
       succeeded: ["rolled-back"],
       failed: ["rolled-back"],
       "rolled-back": [],
+      cancelled: [],
     };
     if (!transitions[row.status].includes(status))
       throw new ApiError(

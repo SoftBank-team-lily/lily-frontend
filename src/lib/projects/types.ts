@@ -3,7 +3,9 @@ export type DeploymentStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "rolled-back";
+  | "rolled-back"
+  /** 사용자가 배포 도중 멈췄다. 트래픽은 이전 버전 그대로 */
+  | "cancelled";
 /** 배포 위치. cloud: 플랫폼 클러스터, onprem: 사용자 PC 의 에이전트 */
 export type DeployTarget = "cloud" | "onprem";
 /**
