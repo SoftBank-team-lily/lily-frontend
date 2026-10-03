@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth/client";
@@ -9,6 +11,7 @@ import { AuthField } from "./AuthField";
 import { Button } from "@/components/ui/Button";
 
 export function AccountForm({ user }: { user: User }) {
+  const { t } = useI18n();
   const router = useRouter();
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -48,33 +51,33 @@ export function AccountForm({ user }: { user: User }) {
       <fieldset disabled={busy} className="flex flex-col gap-5">
         <AuthField
           id="email"
-          label="이메일"
+          label={t("이메일")}
           type="email"
           value={user.email}
           readOnly
           autoComplete="email"
         />
         <p className="text-caption text-mute">
-          {user.emailVerified ? "이메일 인증 완료" : "이메일 인증 필요"}
+          {user.emailVerified ? t("이메일 인증 완료") : t("이메일 인증 필요")}
         </p>
         <AuthField
           id="name"
           name="name"
-          label="표시 이름"
+          label={t("표시 이름")}
           required
           maxLength={50}
           defaultValue={user.name}
           autoComplete="nickname"
         />
         <Button type="submit" className="h-12">
-          {busy ? "저장 중…" : "계정 정보 저장"}
+          {busy ? t("저장 중…") : t("계정 정보 저장")}
         </Button>
       </fieldset>
       <p role="alert" className="text-caption text-danger">
-        {error}
+        {t(error)}
       </p>
       <p role="status" className="text-note text-mute">
-        {message}
+        {t(message)}
       </p>
     </form>
   );

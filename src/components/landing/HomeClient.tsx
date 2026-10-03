@@ -1,5 +1,8 @@
 "use client";
 
+import { localeLink } from "@/lib/i18n/config";
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@/lib/auth/types";
@@ -19,6 +22,7 @@ export function HomeClient({
   project?: ReadyProject;
   dashboardConnected?: boolean;
 }) {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const { data, isPending } = authClient.useSession();
   const viewer = isPending ? user : (data?.user ?? null);
@@ -41,7 +45,7 @@ export function HomeClient({
       if (session.error)
         return {
           allowed: false,
-          message: "로그인 상태를 확인하지 못했어요. 다시 시도해 주세요.",
+          message: t("로그인 상태를 확인하지 못했어요. 다시 시도해 주세요."),
         };
       if (!session.data?.user) {
         login();
@@ -49,7 +53,7 @@ export function HomeClient({
       }
       return {
         allowed: false,
-        message: "배포가 완료된 프로젝트를 내 계정에서 선택해 주세요.",
+        message: t("배포가 완료된 프로젝트를 내 계정에서 선택해 주세요."),
       };
     } catch (error) {
       if (error instanceof ProjectError && error.status === 401) {
@@ -61,23 +65,23 @@ export function HomeClient({
         message:
           error instanceof ProjectError
             ? error.message
-            : "프로젝트를 확인하지 못했어요.",
+            : t("프로젝트를 확인하지 못했어요."),
       };
     }
-  }, [targetId, login]);
+  }, [targetId, login, t]);
   const enterDashboard = useCallback(async () => {
     if (!targetId) return;
     try {
       const entry = await projectRequest<ProjectEntry>(
         `/api/projects/${targetId}/entry`,
       );
-      if (!entry.destination) throw new Error("대시보드 미연결");
-      window.location.assign(entry.destination);
+      if (!entry.destination) throw new Error(t("대시보드 미연결"));
+      window.location.assign(localeLink(entry.destination, locale));
     } catch (error) {
       if (error instanceof ProjectError && error.status === 401) login();
       else throw error;
     }
-  }, [targetId, login]);
+  }, [targetId, login, locale, t]);
   return (
     <LandingPage
       key={`${viewer?.id ?? "guest"}:${activeProject?.id ?? "demo"}`}

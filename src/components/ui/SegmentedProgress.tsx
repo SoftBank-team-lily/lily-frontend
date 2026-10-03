@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/lib/i18n/provider";
 type Props = {
   segments: number;
   fractions: readonly number[];
@@ -5,9 +8,10 @@ type Props = {
 };
 
 export function SegmentedProgress({ segments, fractions, failedIndex }: Props) {
+  const { t } = useI18n();
   return (
     <ol
-      aria-label="배포 단계 진행률"
+      aria-label={t("배포 단계 진행률")}
       className="grid gap-1.5"
       style={{ gridTemplateColumns: `repeat(${segments}, 1fr)` }}
     >

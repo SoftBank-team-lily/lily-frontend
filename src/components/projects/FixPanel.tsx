@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useState } from "react";
 import type { DeployFix, Diagnosis } from "@/lib/projects/types";
 import type { FixInput } from "@/lib/projects/client";
@@ -9,7 +11,10 @@ import { TextField } from "@/components/ui/TextField";
 import { UNSET } from "./DeployCheckDialog";
 
 /** 진단의 고칠 방법 + 사용자가 넣은 값 → 고치기 요청 */
-export function fixInputOf(fixes: DeployFix[], values: Record<string, string>): FixInput {
+export function fixInputOf(
+  fixes: DeployFix[],
+  values: Record<string, string>,
+): FixInput {
   const input: FixInput = { env: {}, generateEnv: [] };
   for (const [index, fix] of fixes.entries()) {
     const typed = values[String(index)]?.trim() ?? "";
@@ -17,17 +22,20 @@ export function fixInputOf(fixes: DeployFix[], values: Record<string, string>): 
       case "env":
         if (!fix.env) break;
         if (fix.kind === "GENERATE") input.generateEnv!.push(fix.env);
-        else if (fix.kind === "DEFAULT") input.env![fix.env] = typed || fix.value || "";
+        else if (fix.kind === "DEFAULT")
+          input.env![fix.env] = typed || fix.value || "";
         else input.env![fix.env] = typed || UNSET;
         break;
       case "port":
-        if (/^\d+$/.test(typed || fix.value || "")) input.port = Number(typed || fix.value);
+        if (/^\d+$/.test(typed || fix.value || ""))
+          input.port = Number(typed || fix.value);
         break;
       case "healthPath":
         input.healthPath = typed || fix.value || "tcp";
         break;
       case "database":
-        if (fix.value === "postgres" || fix.value === "mysql") input.database = fix.value;
+        if (fix.value === "postgres" || fix.value === "mysql")
+          input.database = fix.value;
         break;
       case "rootDir":
         if (typed || fix.value) input.rootDir = typed || fix.value || undefined;
@@ -37,16 +45,22 @@ export function fixInputOf(fixes: DeployFix[], values: Record<string, string>): 
   return input;
 }
 
-function describe(fix: DeployFix) {
+function describe(fix: DeployFix, t: ReturnType<typeof useI18n>["t"]) {
   switch (fix.type) {
     case "env":
-      return fix.kind === "GENERATE" ? "자동으로 만들어요" : fix.kind === "DEFAULT" ? `${fix.value}` : null;
+      return fix.kind === "GENERATE"
+        ? "자동으로 만들어요"
+        : fix.kind === "DEFAULT"
+          ? `${fix.value}`
+          : null;
     case "port":
-      return `컨테이너 포트를 ${fix.value} 로 바꿔요`;
+      return t("컨테이너 포트를 {{value0}} 로 바꿔요", { value0: fix.value });
     case "healthPath":
-      return fix.value === "tcp" ? "주소 대신 포트가 열렸는지만 확인해요" : `헬스 체크를 ${fix.value} 로 바꿔요`;
+      return fix.value === "tcp"
+        ? "주소 대신 포트가 열렸는지만 확인해요"
+        : t("헬스 체크를 {{value0}} 로 바꿔요", { value0: fix.value });
     case "database":
-      return `${fix.value} DB 를 붙여요`;
+      return t("{{value0}} DB 를 붙여요", { value0: fix.value });
     default:
       return null;
   }
@@ -63,6 +77,7 @@ export function FixPanel({
   diagnosis: Diagnosis;
   onApply: (input: FixInput) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -73,7 +88,11 @@ export function FixPanel({
     try {
       await onApply(fixInputOf(fixes, values));
     } catch (problem) {
-      setError(problem instanceof ProjectError ? problem.message : "서버에 연결하지 못했어요.");
+      setError(
+        problem instanceof ProjectError
+          ? problem.message
+          : "서버에 연결하지 못했어요.",
+      );
     } finally {
       setBusy(false);
     }
@@ -86,21 +105,34 @@ export function FixPanel({
           <ul className="mt-3 flex flex-col gap-3">
             {fixes.map((fix, index) => {
               const id = `fix-${index}`;
-              const text = describe(fix);
+              const text = describe(fix, t);
               return (
                 <li key={id} className="flex flex-col gap-1.5">
-                  <label htmlFor={id} className="break-all font-mono text-caption text-ink">
-                    {fix.type === "env" ? fix.env : fix.type === "rootDir" ? "앱 폴더" : fix.type}
+                  <label
+                    htmlFor={id}
+                    className="break-all font-mono text-caption text-ink"
+                  >
+                    {fix.type === "env"
+                      ? fix.env
+                      : fix.type === "rootDir"
+                        ? t("앱 폴더")
+                        : fix.type}
                   </label>
                   {fix.type === "rootDir" && fix.options.length ? (
                     <select
                       id={id}
                       value={values[String(index)] ?? fix.value ?? ""}
-                      onChange={(event) => setValues({ ...values, [index]: event.target.value })}
+                      onChange={(event) =>
+                        setValues({ ...values, [index]: event.target.value })
+                      }
                       className="rounded-xl border border-line bg-field px-4 py-3 text-input text-ink outline-none focus-visible:border-ink"
                     >
                       {fix.options.map((option) => (
-                        <option key={option} value={option} className="bg-ink text-surface">
+                        <option
+                          key={option}
+                          value={option}
+                          className="bg-ink text-surface"
+                        >
                           {option}
                         </option>
                       ))}
@@ -109,26 +141,44 @@ export function FixPanel({
                     <TextField
                       id={id}
                       value={values[String(index)] ?? ""}
-                      onChange={(event) => setValues({ ...values, [index]: event.target.value })}
-                      placeholder="비워 두면 앱은 뜨지만 이 기능은 동작하지 않아요"
+                      onChange={(event) =>
+                        setValues({ ...values, [index]: event.target.value })
+                      }
+                      placeholder={t(
+                        "비워 두면 앱은 뜨지만 이 기능은 동작하지 않아요",
+                      )}
                     />
                   ) : (
-                    text && <p className="break-all text-caption text-mute">{text}</p>
+                    text && (
+                      <p className="break-all text-caption text-mute">
+                        {t(text)}
+                      </p>
+                    )
                   )}
-                  {fix.hint && <p className="text-caption text-mute">{fix.hint}</p>}
+                  {fix.hint && (
+                    <p className="text-caption text-mute">{fix.hint}</p>
+                  )}
                 </li>
               );
             })}
           </ul>
-          <Button className="mt-4 h-10" disabled={busy} onClick={() => void apply()}>
-            {busy ? "고치는 중…" : "고쳐서 다시 배포"}
+          <Button
+            className="mt-4 h-10"
+            disabled={busy}
+            onClick={() => void apply()}
+          >
+            {busy ? t("고치는 중…") : t("고쳐서 다시 배포")}
           </Button>
         </>
       ) : (
-        <p className="mt-2 text-caption text-mute">설정으로 고칠 수 없어요. 레포 코드를 고친 뒤 다시 배포해 주세요.</p>
+        <p className="mt-2 text-caption text-mute">
+          {t(
+            "설정으로 고칠 수 없어요. 레포 코드를 고친 뒤 다시 배포해 주세요.",
+          )}
+        </p>
       )}
       <p role="alert" className="mt-2 text-caption text-danger">
-        {error}
+        {t(error)}
       </p>
     </div>
   );

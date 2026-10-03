@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/lib/i18n/provider";
 import type { FormEventHandler, Ref } from "react";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
@@ -36,6 +39,7 @@ export function DeployForm({
   onNeedLogin,
   waitingAgent,
 }: Props) {
+  const { t } = useI18n();
   return (
     <form
       noValidate
@@ -45,7 +49,7 @@ export function DeployForm({
       <fieldset disabled={disabled} className="flex flex-col gap-3">
         <div className="flex w-full gap-2 max-[641px]:flex-col">
           <label htmlFor="repo" className="sr-only">
-            GitHub 레포 주소
+            {t("GitHub 레포 주소")}
           </label>
           <TextField
             id="repo"
@@ -57,7 +61,7 @@ export function DeployForm({
             aria-describedby={error ? "repo-error" : undefined}
           />
           <Button type="submit" disabled={disabled || waitingAgent}>
-            배포 시작
+            {t("배포 시작")}
           </Button>
         </div>
         {onTargetChange && (
@@ -68,7 +72,7 @@ export function DeployForm({
         )}
         {waitingAgent && (
           <p className="text-caption text-mute">
-            온프레미스 에이전트가 연결되면 배포할 수 있어요.
+            {t("온프레미스 에이전트가 연결되면 배포할 수 있어요.")}
           </p>
         )}
         <DeploySettingsFields />
@@ -78,7 +82,7 @@ export function DeployForm({
         role="alert"
         className="min-h-[1.4em] text-caption text-danger"
       >
-        {error}
+        {t(error)}
       </div>
     </form>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useEffect, useRef, useState } from "react";
 import { projectRequest, ProjectError } from "@/lib/projects/client";
 import type { AgentIssued, AgentState } from "@/lib/agents/types";
@@ -28,6 +30,7 @@ export function AgentPanel({
   /** 로그인하지 않았을 때. 있으면 상태 대신 로그인 버튼을 보인다 */
   onNeedLogin?: () => void;
 }) {
+  const { t } = useI18n();
   const [agent, setAgent] = useState<AgentState | undefined>(undefined);
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState(false);
@@ -105,14 +108,17 @@ export function AgentPanel({
   }
 
   const status = loggedOut
-    ? "로그인하면 에이전트를 연결할 수 있어요."
+    ? t("로그인하면 에이전트를 연결할 수 있어요.")
     : agent === undefined
-      ? "확인 중…"
+      ? t("확인 중…")
       : agent?.connected
-        ? `연결됨 · ${agent.agentId ?? "에이전트"}${agent.database ? "" : " · DB 터널 없음"}`
+        ? t("연결됨 · {{value0}}{{value1}}", {
+            value0: agent.agentId ?? t("에이전트"),
+            value1: agent.database ? "" : ` ${t("· DB 터널 없음")}`,
+          })
         : agent
-          ? "연결 안 됨. 아래 명령으로 에이전트를 실행해 주세요."
-          : "아직 연결한 적이 없어요.";
+          ? t("연결 안 됨. 아래 명령으로 에이전트를 실행해 주세요.")
+          : t("아직 연결한 적이 없어요.");
 
   return (
     <section
@@ -120,28 +126,29 @@ export function AgentPanel({
       aria-labelledby="agent-title"
     >
       <h3 id="agent-title" className="text-control font-semibold">
-        온프레미스 연결
+        {t("온프레미스 연결")}
       </h3>
       <p className="mt-2 text-caption text-mute" aria-live="polite">
-        {status}
+        {t(status)}
       </p>
       {loggedOut ? (
         onNeedLogin && (
           <Button variant="ghost" className="mt-4" onClick={onNeedLogin}>
-            로그인
+            {t("로그인")}
           </Button>
         )
       ) : token ? (
         <div className="mt-4 space-y-3">
           <p className="text-caption text-mute">
-            Docker가 켜진 PC의 터미널(PowerShell, 터미널 앱)에 붙여 넣으세요.
-            토큰은 지금만 보여요.
+            {t(
+              "Docker가 켜진 PC의 터미널(PowerShell, 터미널 앱)에 붙여 넣으세요. 토큰은 지금만 보여요.",
+            )}
           </p>
           <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl bg-field p-4 text-caption text-ink">
             {command(token)}
           </pre>
           <Button variant="ghost" onClick={copy}>
-            {copied ? "복사했어요" : "명령 복사"}
+            {copied ? t("복사했어요") : t("명령 복사")}
           </Button>
         </div>
       ) : (
@@ -152,12 +159,16 @@ export function AgentPanel({
             disabled={busy || agent === undefined}
             onClick={issue}
           >
-            {busy ? "처리 중…" : agent ? "새 토큰 받기" : "연결 토큰 받기"}
+            {busy
+              ? t("처리 중…")
+              : agent
+                ? t("새 토큰 받기")
+                : t("연결 토큰 받기")}
           </Button>
         )
       )}
       <p role="alert" className="mt-2 text-caption text-danger">
-        {error || pollError}
+        {t(error || pollError)}
       </p>
     </section>
   );

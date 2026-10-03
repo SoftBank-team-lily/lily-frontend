@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   detectRepo,
@@ -38,6 +40,7 @@ function inProgress(project: Project) {
 }
 
 export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
+  const { t } = useI18n();
   const [page, setPage] = useState(initialPage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -48,7 +51,11 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   /** 배포 전 확인을 기다리는 등록. 생성을 누르면 고른 DB·폴더·설정을 넣어 등록한다 */
   const [choice, setChoice] = useState<{
     detection: Detection;
-    body: Record<string, unknown> & { repo: string; env?: Record<string, string>; branch?: string };
+    body: Record<string, unknown> & {
+      repo: string;
+      env?: Record<string, string>;
+      branch?: string;
+    };
     form: HTMLFormElement;
   } | null>(null);
   const lock = useRef(false);
@@ -64,7 +71,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         setPage((previous) => ({
           ...previous,
           items: previous.items.map(
-            (item) => latest.items.find((value) => value.id === item.id) ?? item,
+            (item) =>
+              latest.items.find((value) => value.id === item.id) ?? item,
           ),
         }));
       } catch {
@@ -103,7 +111,11 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
     try {
       settings = readSettings(data);
     } catch (problem) {
-      setError(problem instanceof Error ? problem.message : "입력 내용을 확인해 주세요.");
+      setError(
+        problem instanceof Error
+          ? problem.message
+          : "입력 내용을 확인해 주세요.",
+      );
       return;
     }
     const body = {
@@ -132,7 +144,9 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
         body: JSON.stringify({
           ...body,
           database: picked.database,
-          ...(picked.databaseLocation ? { databaseLocation: picked.databaseLocation } : {}),
+          ...(picked.databaseLocation
+            ? { databaseLocation: picked.databaseLocation }
+            : {}),
           ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
           ...(picked.rootDir !== undefined ? { rootDir: picked.rootDir } : {}),
           // 배포 설정 칸에 직접 적은 값이 이긴다
@@ -176,7 +190,10 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
     <section aria-labelledby="projects-title">
       <div className="flex items-center justify-between gap-3">
         <h2 id="projects-title" className="text-lead font-semibold">
-          올린 프로젝트 {page.items.length > 0 && <span className="text-mute">{page.items.length}</span>}
+          {t("올린 프로젝트")}
+          {page.items.length > 0 && (
+            <span className="text-mute">{page.items.length}</span>
+          )}
         </h2>
         <div className="flex items-center gap-4">
           <button
@@ -185,52 +202,58 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
             disabled={busy}
             className="text-caption text-mute hover:text-ink disabled:opacity-40"
           >
-            새로고침
+            {t("새로고침")}
           </button>
-          <Button type="button" variant={creating ? "ghost" : "primary"} className="h-9" onClick={() => setCreating(!creating)}>
-            {creating ? "닫기" : "+ 새 프로젝트"}
+          <Button
+            type="button"
+            variant={creating ? "ghost" : "primary"}
+            className="h-9"
+            onClick={() => setCreating(!creating)}
+          >
+            {creating ? t("닫기") : t("+ 새 프로젝트")}
           </Button>
         </div>
       </div>
       {creating && (
         <div className="mt-4 rounded-xl border border-line p-5">
-      <p className="text-caption text-mute">
-        레포를 등록하면 바로 배포를 시작해요. Dockerfile이 없어도 돼요.
-        백엔드와 프론트가 한 레포에 있으면 앱 폴더마다 하나씩 등록해 주세요.
-      </p>
-      <form onSubmit={create} className="mt-5 space-y-4" aria-busy={busy}>
-        <fieldset disabled={busy} className="flex flex-col gap-4">
-          <AuthField
-            id="project-repo"
-            name="repo"
-            label="GitHub 레포 주소"
-            required
-            maxLength={300}
-            placeholder="github.com/owner/repo"
-          />
-          <AuthField
-            id="project-name"
-            name="name"
-            label="프로젝트 이름 (선택)"
-            maxLength={100}
-          />
-          <DeploySettingsFields />
-          <TargetChoice value={target} onChange={setTarget} />
-          {target === "onprem" && <AgentPanel onChange={setAgent} />}
-          <Button type="submit" variant="ghost" disabled={waitingAgent}>
-            {busy ? "처리 중…" : "프로젝트 등록"}
-          </Button>
-          {waitingAgent && (
-            <p className="text-caption text-mute">
-              온프레미스 에이전트가 연결되면 등록할 수 있어요.
-            </p>
-          )}
-        </fieldset>
-      </form>
+          <p className="text-caption text-mute">
+            {t(
+              "레포를 등록하면 바로 배포를 시작해요. Dockerfile이 없어도 돼요. 백엔드와 프론트가 한 레포에 있으면 앱 폴더마다 하나씩 등록해 주세요.",
+            )}
+          </p>
+          <form onSubmit={create} className="mt-5 space-y-4" aria-busy={busy}>
+            <fieldset disabled={busy} className="flex flex-col gap-4">
+              <AuthField
+                id="project-repo"
+                name="repo"
+                label={t("GitHub 레포 주소")}
+                required
+                maxLength={300}
+                placeholder="github.com/owner/repo"
+              />
+              <AuthField
+                id="project-name"
+                name="name"
+                label={t("프로젝트 이름 (선택)")}
+                maxLength={100}
+              />
+              <DeploySettingsFields />
+              <TargetChoice value={target} onChange={setTarget} />
+              {target === "onprem" && <AgentPanel onChange={setAgent} />}
+              <Button type="submit" variant="ghost" disabled={waitingAgent}>
+                {busy ? t("처리 중…") : t("프로젝트 등록")}
+              </Button>
+              {waitingAgent && (
+                <p className="text-caption text-mute">
+                  {t("온프레미스 에이전트가 연결되면 등록할 수 있어요.")}
+                </p>
+              )}
+            </fieldset>
+          </form>
         </div>
       )}
       <p role="alert" className="mt-3 text-caption text-danger">
-        {error}
+        {t(error)}
       </p>
       {choice && (
         <DeployCheckDialog
@@ -239,7 +262,10 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
           onCancel={() => setChoice(null)}
           onConfirm={(picked) => void confirm(picked)}
           redetect={(dir) =>
-            detectRepo(choice.body.repo, { branch: choice.body.branch, rootDir: dir })
+            detectRepo(choice.body.repo, {
+              branch: choice.body.branch,
+              rootDir: dir,
+            })
           }
         />
       )}
@@ -267,7 +293,11 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-5 text-note text-mute">아직 올린 프로젝트가 없어요. 오른쪽 위 + 새 프로젝트로 올려 보세요.</p>
+        <p className="mt-5 text-note text-mute">
+          {t(
+            "아직 올린 프로젝트가 없어요. 오른쪽 위 + 새 프로젝트로 올려 보세요.",
+          )}
+        </p>
       )}
       {page.nextCursor && (
         <Button
@@ -276,7 +306,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
           disabled={busy}
           onClick={() => reload(true)}
         >
-          더 보기
+          {t("더 보기")}
         </Button>
       )}
     </section>

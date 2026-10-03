@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { selectFlowerTargets } from "@/lib/deploy/deployReducer";
@@ -11,11 +13,24 @@ import type { ReadyProject } from "@/lib/projects/types";
 import { toDeployState } from "@/lib/projects/toDeployState";
 import { parseRepo } from "@/lib/repo/parseRepo";
 import { readSettings } from "@/lib/projects/settingsForm";
-import { detectRepo, fixProject, ProjectError, type FixInput } from "@/lib/projects/client";
+import {
+  detectRepo,
+  fixProject,
+  ProjectError,
+  type FixInput,
+} from "@/lib/projects/client";
 import { findProject, otherTarget } from "@/lib/deploy/realDeploy";
-import type { Detection, DeploySettings, DeployTarget, Project } from "@/lib/projects/types";
+import type {
+  Detection,
+  DeploySettings,
+  DeployTarget,
+  Project,
+} from "@/lib/projects/types";
 import type { AgentState } from "@/lib/agents/types";
-import { DeployCheckDialog, type DeployChoice } from "@/components/projects/DeployCheckDialog";
+import {
+  DeployCheckDialog,
+  type DeployChoice,
+} from "@/components/projects/DeployCheckDialog";
 import { FixPanel } from "@/components/projects/FixPanel";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
@@ -45,6 +60,7 @@ export function LandingPage({
   beforeEnter?: () => Promise<EntryCheck>;
   onResetProject?: () => void;
 }) {
+  const { t } = useI18n();
   const [repo, setRepo] = useState(project?.repo ?? "");
   const [error, setError] = useState("");
   /** 기존 프로젝트·DB 를 확인하는 중 */
@@ -60,7 +76,11 @@ export function LandingPage({
     existing: Project | null;
   } | null>(null);
   /** 마지막으로 시작한 배포. 실패를 고친 뒤 같은 값으로 다시 시작한다 */
-  const last = useRef<{ repo: string; settings: DeploySettings; target: DeployTarget } | null>(null);
+  const last = useRef<{
+    repo: string;
+    settings: DeploySettings;
+    target: DeployTarget;
+  } | null>(null);
   const [target, setTarget] = useState<DeployTarget>("cloud");
   const [agent, setAgent] = useState<AgentState>(null);
   const waitingAgent = target === "onprem" && !agent?.connected;
@@ -112,7 +132,7 @@ export function LandingPage({
         disabled={entry.busy}
         onClick={entry.enter}
       >
-        대시보드로 이동
+        {t("대시보드로 이동")}
       </Button>
     ) : undefined;
   const getEntrySlot = useCallback(
@@ -159,7 +179,8 @@ export function LandingPage({
       const detection = await detectRepo(parsed, settings);
       setChoice({ repo: parsed, settings, detection, existing });
     } catch (problem) {
-      if (problem instanceof ProjectError && problem.status === 401) onNeedLogin?.();
+      if (problem instanceof ProjectError && problem.status === 401)
+        onNeedLogin?.();
       else
         setError(
           problem instanceof ProjectError
@@ -188,7 +209,8 @@ export function LandingPage({
             env: { ...picked.env, ...(settings.env ?? {}) },
             generateEnv: picked.generateEnv,
             reuseEnv: picked.reuseEnv,
-            ...(picked.rootDir !== undefined && picked.rootDir !== existing.rootDir
+            ...(picked.rootDir !== undefined &&
+            picked.rootDir !== existing.rootDir
               ? { rootDir: picked.rootDir }
               : {}),
           },
@@ -201,14 +223,20 @@ export function LandingPage({
         ...settings,
         rootDir,
         database: picked.database,
-        ...(picked.databaseLocation ? { databaseLocation: picked.databaseLocation } : {}),
+        ...(picked.databaseLocation
+          ? { databaseLocation: picked.databaseLocation }
+          : {}),
         ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
         env: { ...picked.env, ...(settings.env ?? {}) },
         generateEnv: picked.generateEnv,
         reuseEnv: picked.reuseEnv,
       });
     } catch (problem) {
-      setError(problem instanceof ProjectError ? problem.message : "서버에 연결하지 못했어요.");
+      setError(
+        problem instanceof ProjectError
+          ? problem.message
+          : "서버에 연결하지 못했어요.",
+      );
     }
   }
   /** 실패 화면에서 고치기: 저장하고 같은 레포를 다시 배포해 따라간다 */
@@ -235,14 +263,14 @@ export function LandingPage({
   }
   const stage =
     state.phase === "succeeded"
-      ? "배포 완료"
+      ? t("배포 완료")
       : state.phase === "rolled-back"
-        ? "이전 버전으로 되돌렸어요"
+        ? t("이전 버전으로 되돌렸어요")
         : state.phase === "failed"
-          ? "배포하지 못했어요"
-        : state.phase === "threshold-exceeded"
-          ? "에러율 기준 초과"
-          : STAGES[state.index].name;
+          ? t("배포하지 못했어요")
+          : state.phase === "threshold-exceeded"
+            ? t("에러율 기준 초과")
+            : STAGES[state.index].name;
   return (
     <>
       <FlowerCanvas
@@ -271,12 +299,17 @@ export function LandingPage({
           >
             <div className="max-w-lg break-keep text-shadow-halo">
               <h2 className="mb-[0.8rem] text-display font-semibold">
-                {project ? "프로젝트가 피었어요." : "지금 피워 보세요."}
+                {project ? t("프로젝트가 피었어요.") : t("지금 피워 보세요.")}
               </h2>
               <p className="text-lead text-mute">
                 {project
-                  ? `${project.name}의 배포가 완료됐어요. 꽃을 눌러 대시보드를 열어 보세요.`
-                  : "GitHub 레포 주소만 넣으면 빌드부터 배포까지 해요. 배포가 진행될수록 꽃에 색이 번져요."}
+                  ? t(
+                      "{{value0}}의 배포가 완료됐어요. 꽃을 눌러 대시보드를 열어 보세요.",
+                      { value0: project.name },
+                    )
+                  : t(
+                      "GitHub 레포 주소만 넣으면 빌드부터 배포까지 해요. 배포가 진행될수록 꽃에 색이 번져요.",
+                    )}
               </p>
             </div>
             {project ? (
@@ -286,7 +319,7 @@ export function LandingPage({
             ) : (
               <DeployForm
                 repo={repo}
-                error={error}
+                error={t(error)}
                 disabled={disabled || checking || !!choice || entry.busy}
                 inputRef={input}
                 onRepoChange={setRepo}
@@ -304,18 +337,22 @@ export function LandingPage({
                 // DB 위치는 등록할 때만 정한다 (고쳐서 다시 배포할 때는 묻지 않는다)
                 target={choice.existing ? undefined : target}
                 savedKeys={choice.existing?.envKeys}
-                confirmLabel={choice.existing ? "고쳐서 다시 배포" : "생성"}
+                confirmLabel={
+                  choice.existing ? t("고쳐서 다시 배포") : t("생성")
+                }
                 onCancel={() => {
                   setChoice(null);
                   input.current?.focus();
                 }}
                 onConfirm={(picked) => void confirm(picked)}
-                redetect={(dir) => detectRepo(choice.repo, { ...choice.settings, rootDir: dir })}
+                redetect={(dir) =>
+                  detectRepo(choice.repo, { ...choice.settings, rootDir: dir })
+                }
               />
             )}
             {flowerAvailable && dashboardReady && (
               <p className="text-caption text-mute">
-                꽃을 누르면 대시보드로 이동해요.
+                {t("꽃을 누르면 대시보드로 이동해요.")}
               </p>
             )}
             {disabled && (
@@ -327,13 +364,13 @@ export function LandingPage({
                 finished={finished}
                 onReset={restart}
                 resetDisabled={entry.busy}
-                resetLabel={project ? "내 프로젝트로" : undefined}
+                resetLabel={project ? t("내 프로젝트로") : undefined}
                 actions={fallbackEntry}
               >
                 {project && (
                   <>
                     <b className="font-semibold text-ink">{project.name}</b>{" "}
-                    프로젝트가 정상 배포됐어요.
+                    {t("프로젝트가 정상 배포됐어요.")}
                   </>
                 )}
                 {!project && state.result?.outcome === "succeeded" && (
@@ -341,10 +378,10 @@ export function LandingPage({
                     <b className="font-semibold text-ink">
                       {state.result.repo}
                     </b>
-                    가 피었어요.{" "}
+                    {t("가 피었어요.")}{" "}
                     {state.result.url ? (
                       <>
-                        주소는{" "}
+                        {t("주소는")}{" "}
                         <a
                           href={state.result.url}
                           target="_blank"
@@ -353,17 +390,17 @@ export function LandingPage({
                         >
                           {state.result.url.replace(/^https?:\/\//, "")}
                         </a>
-                        이고,{" "}
+                        {t("이고,")}{" "}
                       </>
                     ) : null}
-                    모니터링 화면에서 상태를 계속 볼 수 있어요.
+                    {t("모니터링 화면에서 상태를 계속 볼 수 있어요.")}
                     {!!state.result.unsetKeys?.length && (
                       <span className="mt-2 block">
-                        값을 몰라 비워 둔 설정이 있어요:{" "}
+                        {t("값을 몰라 비워 둔 설정이 있어요:")}{" "}
                         <span className="break-all font-mono text-ink">
                           {state.result.unsetKeys.join(", ")}
                         </span>
-                        . 내 계정의 설정에서 넣으면 그 기능이 켜져요.
+                        {t(". 내 계정의 설정에서 넣으면 그 기능이 켜져요.")}
                       </span>
                     )}
                   </>
@@ -377,11 +414,17 @@ export function LandingPage({
                   (state.result.message ?? ROLLBACK_MESSAGE)}
                 {state.result?.outcome === "failed" &&
                   (state.result.diagnosis && state.result.projectId ? (
-                    <FixPanel diagnosis={state.result.diagnosis} onApply={applyFix} />
+                    <FixPanel
+                      diagnosis={state.result.diagnosis}
+                      onApply={applyFix}
+                    />
                   ) : (
                     <>
-                      {state.result.message ?? "배포 서버가 이유를 남기지 않았어요."}{" "}
-                      내 계정에서 설정을 고친 뒤 다시 배포할 수 있어요.
+                      {t(
+                        state.result.message ??
+                          "배포 서버가 이유를 남기지 않았어요.",
+                      )}{" "}
+                      {t("내 계정에서 설정을 고친 뒤 다시 배포할 수 있어요.")}
                     </>
                   ))}
               </DeployStatus>
@@ -394,9 +437,9 @@ export function LandingPage({
         className="pointer-events-none fixed inset-x-6 bottom-6 z-20 text-center text-caption text-mute"
       >
         {entry.phase === "checking"
-          ? "진입 권한을 확인하고 있어요."
+          ? t("진입 권한을 확인하고 있어요.")
           : entry.busy
-            ? "대시보드로 이동 중입니다."
+            ? t("대시보드로 이동 중입니다.")
             : entry.message}
       </p>
     </>

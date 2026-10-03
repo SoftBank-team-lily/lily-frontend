@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { LanguageProvider } from "@/lib/i18n/provider";
+import {
+  act,
+  fireEvent,
+  render as renderComponent,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
 
@@ -27,7 +33,10 @@ function project(status: string | null, extra: Record<string, unknown> = {}) {
 /** 실행기가 자동으로 고쳐 다시 보낸 배포 (d2) */
 function retried(status: string) {
   const base = project(status);
-  return { ...base, latestDeployment: { ...base.latestDeployment!, id: "d2", autoFixed: true } };
+  return {
+    ...base,
+    latestDeployment: { ...base.latestDeployment!, id: "d2", autoFixed: true },
+  };
 }
 function respond(status: number, body: unknown) {
   return Promise.resolve(
@@ -187,7 +196,9 @@ describe("배포 화면", () => {
     registered = [project(null)];
     fetch.mockImplementation((url: string) =>
       url === "/api/agent"
-        ? respond(200, { agent: { agentId: "edge-1", connected: true, database: true } })
+        ? respond(200, {
+            agent: { agentId: "edge-1", connected: true, database: true },
+          })
         : url === "/api/projects?limit=100"
           ? respond(200, { items: registered, nextCursor: null })
           : respond(404, { error: { code: "NOT_FOUND", message: "없음" } }),
@@ -197,8 +208,12 @@ describe("배포 화면", () => {
     await act(() => vi.advanceTimersByTimeAsync(0));
     submit();
     await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(screen.getByText(/이미 클라우드에 등록돼 있어요/)).toBeInTheDocument();
-    expect(fetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+    expect(
+      screen.getByText(/이미 클라우드에 등록돼 있어요/),
+    ).toBeInTheDocument();
+    expect(fetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
+      false,
+    );
   });
   it("온프레미스를 고를 때 로그인하지 않았으면 로그인 버튼을 보인다", async () => {
     const login = vi.fn();
@@ -227,10 +242,43 @@ describe("배포 화면", () => {
             apps: [],
             problem: null,
             config: [
-              { env: "JWT_SECRET", property: "jwt.secret", kind: "GENERATE", value: null, hint: "비밀값", required: true, source: "a" },
-              { env: "JWT_EXPIRATION", property: "jwt.expiration", kind: "DEFAULT", value: "3600000", hint: "만료", required: true, source: "a" },
-              { env: "KAKAO_REST_API_KEY", property: "kakao.rest-api-key", kind: "INPUT", value: null, hint: "카카오", required: true, source: "a" },
-              { env: "AI_OPENAI_API_KEY", property: "ai.openai.api-key", kind: "INPUT", value: null, hint: "OpenAI", required: true, source: "a", reusable: true },
+              {
+                env: "JWT_SECRET",
+                property: "jwt.secret",
+                kind: "GENERATE",
+                value: null,
+                hint: "비밀값",
+                required: true,
+                source: "a",
+              },
+              {
+                env: "JWT_EXPIRATION",
+                property: "jwt.expiration",
+                kind: "DEFAULT",
+                value: "3600000",
+                hint: "만료",
+                required: true,
+                source: "a",
+              },
+              {
+                env: "KAKAO_REST_API_KEY",
+                property: "kakao.rest-api-key",
+                kind: "INPUT",
+                value: null,
+                hint: "카카오",
+                required: true,
+                source: "a",
+              },
+              {
+                env: "AI_OPENAI_API_KEY",
+                property: "ai.openai.api-key",
+                kind: "INPUT",
+                value: null,
+                hint: "OpenAI",
+                required: true,
+                source: "a",
+                reusable: true,
+              },
             ],
           },
         });
@@ -242,9 +290,13 @@ describe("배포 화면", () => {
     submit();
     await act(() => vi.runAllTimersAsync());
 
-    expect(screen.getByRole("dialog", { name: "배포 전 확인" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "배포 전 확인" }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("JWT_EXPIRATION")).toHaveValue("3600000");
-    expect(screen.getByText(/같은 레포의 다른 프로젝트에 넣은 값을 써요/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/같은 레포의 다른 프로젝트에 넣은 값을 써요/),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "생성" }));
     await act(() => vi.runAllTimersAsync());
 
@@ -258,7 +310,17 @@ describe("배포 화면", () => {
   it("실행기가 자동으로 고쳐 다시 보낸 배포를 이어서 따라간다", async () => {
     const diagnosis = {
       cause: "JWT_SECRET 이(가) 없어서 시작하지 못했어요.",
-      fixes: [{ type: "env", env: "JWT_SECRET", kind: "GENERATE", value: null, hint: null, options: [], auto: true }],
+      fixes: [
+        {
+          type: "env",
+          env: "JWT_SECRET",
+          kind: "GENERATE",
+          value: null,
+          hint: null,
+          options: [],
+          auto: true,
+        },
+      ],
       source: "rule",
       autoFixable: true,
     };
@@ -278,17 +340,29 @@ describe("배포 화면", () => {
   it("실패 원인에 사용자만 아는 값이 있으면 입력받아 고친 뒤 다시 배포한다", async () => {
     const diagnosis = {
       cause: "설정 KAKAO_REST_API_KEY 이(가) 없어요.",
-      fixes: [{ type: "env", env: "KAKAO_REST_API_KEY", kind: "INPUT", value: null, hint: "카카오 키", options: [], auto: false }],
+      fixes: [
+        {
+          type: "env",
+          env: "KAKAO_REST_API_KEY",
+          kind: "INPUT",
+          value: null,
+          hint: "카카오 키",
+          options: [],
+          auto: false,
+        },
+      ],
       source: "rule",
       autoFixable: false,
     };
     states = [project("failed", { diagnosis, autoFixed: false })];
     fetch.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === `/api/projects/${PROJECT}/fix`) return respond(200, project("failed"));
+      if (url === `/api/projects/${PROJECT}/fix`)
+        return respond(200, project("failed"));
       if (url === "/api/projects?limit=100")
         return respond(200, { items: registered, nextCursor: null });
       if (url === "/api/detect") return respond(200, { database: "none" });
-      if (url === `/api/projects/${PROJECT}/deployments`) return respond(201, { id: "d2" });
+      if (url === `/api/projects/${PROJECT}/deployments`)
+        return respond(201, { id: "d2" });
       if (url === "/api/projects" && init?.method === "POST") {
         registered = [project("failed")];
         return respond(201, project("queued"));
@@ -301,11 +375,15 @@ describe("배포 화면", () => {
     await act(() => vi.runAllTimersAsync());
 
     expect(screen.getByText(diagnosis.cause)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("KAKAO_REST_API_KEY"), { target: { value: "kakao-123" } });
+    fireEvent.change(screen.getByLabelText("KAKAO_REST_API_KEY"), {
+      target: { value: "kakao-123" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "고쳐서 다시 배포" }));
     await act(() => vi.runAllTimersAsync());
 
-    expect(JSON.parse(callTo(`/api/projects/${PROJECT}/fix`)[1].body)).toMatchObject({
+    expect(
+      JSON.parse(callTo(`/api/projects/${PROJECT}/fix`)[1].body),
+    ).toMatchObject({
       env: { KAKAO_REST_API_KEY: "kakao-123" },
       redeploy: false,
     });
@@ -322,7 +400,9 @@ describe("배포 화면", () => {
     await act(() => vi.runAllTimersAsync());
     expect(screen.getByText("배포하지 못했어요")).toBeInTheDocument();
     expect(screen.getByText(/npm ci exited 1/)).toBeInTheDocument();
-    expect(flower.mock.lastCall?.[0]).toMatchObject({ targets: { wilt: 0.85 } });
+    expect(flower.mock.lastCall?.[0]).toMatchObject({
+      targets: { wilt: 0.85 },
+    });
   });
   it("로그인하지 않았으면 로그인으로 보낸다", async () => {
     const login = vi.fn();
@@ -343,7 +423,9 @@ describe("배포 화면", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(input()).toBeEnabled();
     expect(
-      fetch.mock.calls.some(([url, init]) => url === "/api/projects" && init?.method === "POST"),
+      fetch.mock.calls.some(
+        ([url, init]) => url === "/api/projects" && init?.method === "POST",
+      ),
     ).toBe(false);
   });
   it("DB 를 감지하지 못하면 없음을 골라 둔다", async () => {
@@ -355,7 +437,9 @@ describe("배포 화면", () => {
     render(<LandingPage />);
     submit();
     await act(() => vi.runAllTimersAsync());
-    expect(screen.getByRole("combobox", { name: "감지된 DB" })).toHaveValue("none");
+    expect(screen.getByRole("combobox", { name: "감지된 DB" })).toHaveValue(
+      "none",
+    );
   });
   it("이미 등록한 프로젝트는 DB 를 묻지 않고 다시 배포한다", async () => {
     registered = [project("succeeded")];
@@ -386,3 +470,11 @@ describe("배포 화면", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+function render(ui: React.ReactNode) {
+  return renderComponent(ui, {
+    wrapper: ({ children }) => (
+      <LanguageProvider locale="ko">{children}</LanguageProvider>
+    ),
+  });
+}

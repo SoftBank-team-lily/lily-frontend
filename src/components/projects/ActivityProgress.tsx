@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useEffect, useState } from "react";
 import { elapsed, type Activity } from "@/lib/projects/burst";
 import { Button } from "@/components/ui/Button";
@@ -16,56 +18,93 @@ export function ActivityProgress({
   busy: boolean;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const now = useNow();
   const time = elapsed(activity.since, now);
   return (
     <div className="mt-3 rounded-xl border border-line p-3" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-semibold text-ink">{activity.title}</p>
+        <p className="font-semibold text-ink">{t(activity.title)}</p>
         <span className="text-mute">
-          {activity.steps.length > 0 && `${activity.current + 1}/${activity.steps.length} 단계 · `}약 {activity.percent}%
+          {activity.steps.length > 0 &&
+            t("{{value0}}/{{value1}} 단계 · ", {
+              value0: activity.current + 1,
+              value1: activity.steps.length,
+            })}
+          {t("약")} {activity.percent}%
         </span>
       </div>
       <div
         className="mt-2 h-1 overflow-hidden rounded-full bg-field"
         role="progressbar"
-        aria-label={activity.title}
+        aria-label={t(activity.title)}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={activity.percent}
       >
-        <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${activity.percent}%` }} />
+        <div
+          className="h-full bg-accent transition-[width] duration-500"
+          style={{ width: `${activity.percent}%` }}
+        />
       </div>
       {activity.steps.length > 0 && (
         <ol className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
           {activity.steps.map((step, index) => (
             <li
-              key={`${index}-${step}`}
-              className={index < activity.current ? "text-mute line-through" : index === activity.current ? "text-ink" : "text-mute"}
+              key={`${index}-${t(step)}`}
+              className={
+                index < activity.current
+                  ? "text-mute line-through"
+                  : index === activity.current
+                    ? "text-ink"
+                    : "text-mute"
+              }
             >
-              {index === activity.current ? "▶ " : index < activity.current ? "✓ " : ""}
-              {step}
+              {index === activity.current
+                ? "▶ "
+                : index < activity.current
+                  ? "✓ "
+                  : ""}
+              {t(step)}
             </li>
           ))}
         </ol>
       )}
       <p className="mt-2 text-mute">
-        지금 단계 {activity.steps[activity.current] ?? "준비"}
-        {time && ` · ${time} 지남`}
-        {activity.build && ` · 클라우드 빌드 ${activity.build.status}`}
+        {t("지금 단계")}
+        {t(activity.steps[activity.current] ?? "준비")}
+        {time && t(" · {{value0}} 지남", { value0: t(time) })}
+        {activity.build &&
+          t(" · 클라우드 빌드 {{value0}}", {
+            value0: t(activity.build.status),
+          })}
       </p>
       {activity.build?.line && (
-        <p className="mt-1 truncate font-mono text-mute" title={activity.build.line}>
+        <p
+          className="mt-1 truncate font-mono text-mute"
+          title={activity.build.line}
+        >
           {activity.build.line}
         </p>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {activity.cancellable ? (
-          <Button variant="ghost" className="h-10" disabled={busy} onClick={onCancel}>
-            {busy ? "요청 중…" : activity.kind === "home" ? "전환 취소" : "대기 배포 취소 (버스팅 끄기)"}
+          <Button
+            variant="ghost"
+            className="h-10"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            {busy
+              ? t("요청 중…")
+              : activity.kind === "home"
+                ? t("전환 취소")
+                : t("대기 배포 취소 (버스팅 끄기)")}
           </Button>
         ) : (
-          activity.lockedReason && <p className="text-mute">{activity.lockedReason}</p>
+          activity.lockedReason && (
+            <p className="text-mute">{t(activity.lockedReason)}</p>
+          )
         )}
       </div>
     </div>
