@@ -388,16 +388,16 @@ export async function closeSchemaWindow(ownerId: string, id: string) {
   return getSchema(ownerId, id);
 }
 /**
- * 프로젝트를 지운다. 클라우드면 클러스터의 앱(Deployment·Service·Ingress·Secret)을 먼저 지우고,
- * database 면 앱 DB 도 DROP 한다. 배포 기록은 프로젝트와 같이 지워진다 (ON DELETE CASCADE).
- * 온프레미스는 플랫폼 기록만 지운다 (내 PC 의 앱은 에이전트를 멈추면 내려간다).
+ * 프로젝트를 지운다. 배포한 앱부터 지우고 플랫폼 기록을 지운다 (배포 기록은 ON DELETE CASCADE).
+ * 클라우드: 클러스터의 앱(Deployment·Service·Ingress·Secret). 온프레미스: 내 PC 의 컨테이너·이미지, 공개 주소,
+ * 클라우드 대기 배포 (lily-builder 가 에이전트에 보낸다. 에이전트가 꺼져 있으면 PC 의 컨테이너만 남는다).
+ * database 면 앱 DB 도 DROP 한다 (클라우드 RDS, 또는 내 PC 의 DB 컨테이너).
  */
 export async function deleteProject(ownerId: string, id: string, database: boolean) {
   const row = await projectRow(ownerId, id);
   assertIdle(row);
   let removed = false;
-  if (row.target === "cloud" && row.app_name)
-    removed = await appAction(row.app_name, "delete", database);
+  if (row.app_name) removed = await appAction(row.app_name, "delete", database);
   await db.query("DELETE FROM projects WHERE id=$1 AND owner_id=$2", [id, ownerId]);
   return { id, removed };
 }

@@ -522,10 +522,12 @@ export function ProjectItem({
                   "클러스터에서 앱을 지우고 프로젝트와 배포 기록도 지워요. 잠깐 멈추려면 '중지'를 쓰세요.",
                 )
               : t(
-                  "프로젝트와 배포 기록을 지워요. 내 PC 에서 도는 앱은 에이전트를 멈추면 내려가요.",
+                  "내 PC 의 앱 컨테이너와 공개 주소, 클라우드 대기 Pod 를 지우고 프로젝트와 배포 기록도 지워요.",
                 )}
           </p>
-          {project.target === "cloud" && (
+          {/* 내 PC 앱이 사용자가 준 DB(external)를 쓰면 그 DB 는 지우지 않으므로 묻지 않는다 */}
+          {(project.target === "cloud" ||
+            (project.database !== "none" && project.databaseLocation !== "external")) && (
             <label className="mt-3 flex items-center gap-2 text-mute">
               <input
                 type="checkbox"
