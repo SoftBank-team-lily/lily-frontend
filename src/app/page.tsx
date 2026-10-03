@@ -1,5 +1,6 @@
 import { AuthNav } from "@/components/auth/AuthNav";
 import { getUser } from "@/lib/auth/session";
+import { REQUIRE_EMAIL_VERIFICATION } from "@/lib/auth/policy";
 import { HomeClient } from "@/components/landing/HomeClient";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { getProjectEntry } from "@/lib/projects/server";
@@ -30,7 +31,8 @@ export default async function Home({
       );
     if (!user)
       redirect(`/login?next=${encodeURIComponent(`/?project=${id.data}`)}`);
-    if (!user.emailVerified) redirect("/verify-email");
+    if (REQUIRE_EMAIL_VERIFICATION && !user.emailVerified)
+      redirect("/verify-email");
     let entry: ProjectEntry | undefined;
     let message = "프로젝트를 확인하지 못했어요.";
     try {

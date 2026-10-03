@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { db } from "@/lib/db";
 import { consumeLimit } from "@/lib/limits";
 import { sendAuthMail } from "./mail";
+import { REQUIRE_EMAIL_VERIFICATION } from "./policy";
 
 const baseURL = process.env.BETTER_AUTH_URL;
 const secret = process.env.BETTER_AUTH_SECRET;
@@ -53,7 +54,7 @@ export const auth = betterAuth({
   ],
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    requireEmailVerification: REQUIRE_EMAIL_VERIFICATION,
     autoSignIn: false,
     minPasswordLength: 12,
     maxPasswordLength: 128,
