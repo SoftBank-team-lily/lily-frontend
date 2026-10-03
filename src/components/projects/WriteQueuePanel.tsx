@@ -23,13 +23,12 @@ const stateLabel: Record<WriteQueueItem["state"], string> = {
 };
 
 /**
- * 온프레미스 앱의 엣지 쓰기 큐: PC 가 꺼진 동안 등록 경로의 POST 를 Cloudflare 에 쌓았다가 PC 가 돌아오면 순서대로 다시 보낸다.
- * 등록 경로와 최근 요청(경로·상태만, 본문은 보이지 않음)을 보인다
+ * 온프레미스 앱의 PC 장애 대비: 읽기 사본(Cache API)과 쓰기 보관(DO) 체크박스, PC 상태, 최근 쌓인 요청(경로·상태만).
+ * 쓰기 보관을 켜면 PC 가 꺼진 동안 그 앱의 POST 를 Cloudflare 에 암호화해 쌓았다가 PC 가 돌아오면 순서대로 다시 보낸다
  */
 export function WriteQueuePanel({ projectId }: { projectId: string }) {
   const { t } = useI18n();
   const [loaded, setLoaded] = useState<Loaded | null | undefined>(undefined);
-  const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,17 +46,16 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
-  async function save(paths: string[]) {
+  async function save(change: { queue?: boolean; snapshot?: boolean }) {
     setBusy(true);
     setError(null);
     try {
       const value = await projectRequest<Loaded>(`/api/projects/${projectId}/write-queue`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths }),
+        body: JSON.stringify(change),
       });
       setLoaded(value);
-      setDraft(null);
     } catch (cause) {
       setError(cause instanceof ProjectError ? cause.message : "요청을 처리하지 못했어요.");
     } finally {
@@ -68,26 +66,15 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
   if (loaded === undefined || (loaded && !loaded.available)) return null;
 
   const queue = loaded?.queue ?? null;
-  const text = draft ?? (queue?.paths ?? []).join("\n");
-  const paths = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const on = (queue?.paths.length ?? 0) > 0;
+  const writes = (queue?.paths.length ?? 0) > 0;
+  const reads = queue?.snapshot !== false;
 
   return (
     <section aria-labelledby="write-queue-title">
       <div className="flex flex-wrap items-center gap-3">
         <h2 id="write-queue-title" className="text-lead font-semibold">
-          {t("장애 중 쓰기 보관")}
+          {t("PC 장애 대비")}
         </h2>
-        {queue && (
-          <span
-            className={`rounded-lg border px-2 py-0.5 text-caption ${on ? "border-onprem text-onprem" : "border-line text-mute"}`}
-          >
-            {on ? t("켜짐") : t("꺼짐")}
-          </span>
-        )}
         {queue && (
           <span className="text-control text-ink tabular-nums">
             <span className="text-mute">{t("대기")} · </span>
@@ -99,11 +86,6 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
           </span>
         )}
       </div>
-      <p className="mt-2 text-caption text-mute">
-        {t(
-          "PC 가 꺼진 동안 아래 경로로 온 POST 를 Cloudflare 에 암호화해 쌓고 202 로 접수해요. PC 가 돌아오면 받은 순서대로 다시 보내요. 글·댓글처럼 쌓기만 하는 경로만 넣어 주세요. 결제·재고처럼 그 순간의 상태가 중요한 요청은 넣지 마세요.",
-        )}
-      </p>
 
       {!queue ? (
         <p className="mt-3 text-caption text-mute">{t("Cloudflare 에서 쓰기 큐 상태를 읽지 못했어요.")}</p>
@@ -111,9 +93,28 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
         <>
           {queue.routed === false && (
             <p className="mt-3 text-caption text-warning">
-              {t("이 앱 공개 주소에는 아직 엣지 Worker 가 없어요. 경로를 저장해도 요청이 큐를 거치지 않아요.")}
+              {t("이 앱 공개 주소에는 아직 엣지 Worker 가 없어요. 설정을 바꿔도 요청이 Worker 를 거치지 않아요.")}
             </p>
           )}
+          <div className="mt-3 flex flex-col gap-2 text-control">
+            <EdgeOption
+              id="edge-snapshot"
+              checked={reads}
+              disabled={busy}
+              label={t("장애 중 읽기 사본 (Cache API)")}
+              description={t("PC 가 응답한 공개 페이지를 저장해 두었다가, PC 가 꺼지면 그 사본으로 보여 줘요.")}
+              onChange={(value) => save({ snapshot: value })}
+            />
+            <EdgeOption
+              id="edge-queue"
+              checked={writes}
+              disabled={busy}
+              label={t("장애 중 쓰기 보관 (Durable Object)")}
+              description={t("PC 가 꺼진 동안 온 POST 를 암호화해 쌓고 202 로 접수해요. PC 가 돌아오면 받은 순서대로 다시 보내요.")}
+              onChange={(value) => save({ queue: value })}
+            />
+            {error && <p className="text-caption text-danger">{t(error)}</p>}
+          </div>
           <dl className="mt-3 grid gap-1 text-caption sm:grid-cols-[auto_1fr] sm:gap-x-4">
             <dt className="text-mute">{t("PC 상태")}</dt>
             <dd className={queue.downSince ? "text-warning" : "text-ink"}>
@@ -126,41 +127,6 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
               {queue.lastCheck ? `${when(queue.lastCheck.at)} · ${t(checkLabel(queue.lastCheck), checkValues(queue.lastCheck))}` : t("아직 없음")}
             </dd>
           </dl>
-          <div className="mt-3 flex flex-col gap-2 text-control">
-            <label htmlFor="write-queue-paths" className="text-caption text-mute">
-              {t("POST 경로 (한 줄에 하나, 그 아래 경로도 포함)")}
-            </label>
-            <textarea
-              id="write-queue-paths"
-              rows={3}
-              value={text}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={"/posts\n/comments"}
-              spellCheck={false}
-              className="min-w-0 rounded-xl border border-line bg-field px-4 py-3 font-mono text-caption text-ink outline-none placeholder:text-mute focus-visible:border-ink"
-            />
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => save(paths)}
-                disabled={busy || draft === null}
-                className="rounded-md border border-line px-3 py-1 text-caption text-ink hover:bg-field disabled:text-mute"
-              >
-                {busy ? t("저장하는 중…") : t("경로 저장")}
-              </button>
-              {on && (
-                <button
-                  type="button"
-                  onClick={() => save([])}
-                  disabled={busy}
-                  className="rounded-md border border-line px-3 py-1 text-caption text-ink hover:bg-field disabled:text-mute"
-                >
-                  {t("끄기")}
-                </button>
-              )}
-            </div>
-            {error && <p className="text-caption text-danger">{t(error)}</p>}
-          </div>
 
           {queue.items.length > 0 && (
             <div className="mt-3 overflow-x-auto">
@@ -201,6 +167,40 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
         </>
       )}
     </section>
+  );
+}
+
+/** 배포 화면과 같은 장애 대비 체크박스 */
+function EdgeOption({
+  id,
+  checked,
+  disabled,
+  label,
+  description,
+  onChange,
+}: {
+  id: string;
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  description: string;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label htmlFor={id} className="flex items-start gap-2">
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1"
+      />
+      <span>
+        <span className="text-ink">{label}</span>
+        <span className="block text-caption text-mute">{description}</span>
+      </span>
+    </label>
   );
 }
 

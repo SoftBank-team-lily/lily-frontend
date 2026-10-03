@@ -44,6 +44,10 @@ export type DeploySettings = {
   generateEnv?: string[];
   /** 같은 레포의 다른 프로젝트에 저장된 값을 가져올 환경변수 */
   reuseEnv?: string[];
+  /** 온프레미스: PC 장애 때 읽기 사본(Cache API)을 쓴다. 비우면 켠다 */
+  edgeSnapshot?: boolean;
+  /** 온프레미스: PC 장애 때 POST 를 쓰기 보관(DO)에 쌓는다. 비우면 켠다 */
+  edgeQueue?: boolean;
 };
 /** 설정 키를 채우는 방법. GENERATE: 서버가 랜덤 값, DEFAULT: value 를 넣는다, INPUT: 사용자만 아는 값 */
 export type ConfigKind = "GENERATE" | "DEFAULT" | "INPUT";
@@ -292,6 +296,8 @@ export type WriteQueue = {
   paths: string[];
   counts: { queued: number; sent: number; failed: number };
   items: WriteQueueItem[];
+  /** 장애 중 읽기 사본(Cache API)을 쓰는가. 쓰기 보관은 paths 가 있으면 켜진 것이다 */
+  snapshot?: boolean;
   /**
    * 재전송 전 마지막 PC 확인 (GET /). status null: 응답 없음, edge: Cloudflare 가 만든 오류(PC 에 닿지 않음),
    * appErrors: 앱의 5xx 가 이어진 수 (10번이면 보내 본다). 아직 확인한 적 없으면 null

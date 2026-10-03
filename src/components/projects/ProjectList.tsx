@@ -156,6 +156,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
             ? { databaseLocation: picked.databaseLocation }
             : {}),
           ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
+          ...(picked.edgeSnapshot !== undefined ? { edgeSnapshot: picked.edgeSnapshot } : {}),
+          ...(picked.edgeQueue !== undefined ? { edgeQueue: picked.edgeQueue } : {}),
           ...(picked.rootDir !== undefined ? { rootDir: picked.rootDir } : {}),
           // 배포 설정 칸에 직접 적은 값이 이긴다
           env: { ...picked.env, ...(body.env ?? {}) },

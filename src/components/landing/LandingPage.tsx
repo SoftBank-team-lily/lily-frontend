@@ -249,6 +249,8 @@ export function LandingPage({
           ? { databaseLocation: picked.databaseLocation }
           : {}),
         ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
+        ...(picked.edgeSnapshot !== undefined ? { edgeSnapshot: picked.edgeSnapshot } : {}),
+        ...(picked.edgeQueue !== undefined ? { edgeQueue: picked.edgeQueue } : {}),
         env: { ...picked.env, ...(settings.env ?? {}) },
         generateEnv: picked.generateEnv,
         reuseEnv: picked.reuseEnv,

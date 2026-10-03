@@ -86,6 +86,9 @@ export type DeploySettings = {
   deploymentMode?: "HYBRID" | "ONPREM_ONLY";
   /** 하이브리드의 클라우드. 비우면 AWS */
   cloudProvider?: "AWS" | "GCP";
+  /** 온프레미스: PC 장애 때 읽기 사본(Cache API)·쓰기 보관(DO)을 쓰는가. null 이면 보내지 않아 앱의 지금 설정을 둔다 */
+  edgeSnapshot?: boolean | null;
+  edgeQueue?: boolean | null;
 };
 
 export type RunDeps = {
@@ -400,6 +403,8 @@ export function buildSettings(settings: DeploySettings | undefined) {
             ? { importDatabase: true }
             : {}),
         }),
+    ...(settings.edgeSnapshot != null ? { edgeSnapshot: settings.edgeSnapshot } : {}),
+    ...(settings.edgeQueue != null ? { edgeQueue: settings.edgeQueue } : {}),
   };
 }
 

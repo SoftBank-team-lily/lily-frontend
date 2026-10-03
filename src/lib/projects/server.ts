@@ -453,7 +453,13 @@ export async function updateWriteQueue(ownerId: string, id: string, input: Write
     throw new ApiError(409, "CLOUD", "엣지 쓰기 큐는 온프레미스 앱에서만 써요.");
   if (!row.app_name)
     throw new ApiError(409, "NOT_DEPLOYED", "먼저 내 PC 로 배포해 주세요.");
-  return { available: true, queue: await sendWriteQueue(row.app_name, input.paths) };
+  const queue = await sendWriteQueue(row.app_name, input);
+  // 다음 배포가 배포 화면 값으로 되돌리지 않게 프로젝트에도 남긴다
+  await db.query(
+    "UPDATE projects SET edge_queue=COALESCE($3, edge_queue), edge_snapshot=COALESCE($4, edge_snapshot) WHERE id=$1 AND owner_id=$2",
+    [id, ownerId, input.queue ?? null, input.snapshot ?? null],
+  );
+  return { available: true, queue };
 }
 /**
  * pgroll 롤백 창을 바로 닫는다. 이후에는 이번 마이그레이션 전으로 스키마를 되돌릴 수 없다.
@@ -615,8 +621,8 @@ export async function createProject(
   const rootDir = settings.rootDir ?? "";
   await db.query(
     `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, cloud_provider, branch, root_dir, port, health_path, env, database,
-      database_location, database_url, cloud_selection, cloud_selection_reason)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      database_location, database_url, cloud_selection, cloud_selection_reason, edge_snapshot, edge_queue)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       id,
       ownerId,
@@ -645,6 +651,9 @@ export async function createProject(
         : null,
       mode === "ONPREM_ONLY" ? "manual" : selection,
       automatic?.reason ?? null,
+      // PC 장애 대비 체크박스. 온프레미스는 고르지 않으면 둘 다 켠다. 클라우드는 쓰지 않는다
+      target === "onprem" ? (settings.edgeSnapshot ?? true) : null,
+      target === "onprem" ? (settings.edgeQueue ?? true) : null,
     ],
   );
   return getProject(ownerId, id);

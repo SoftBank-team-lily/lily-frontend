@@ -91,10 +91,13 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         app_name: string | null;
         move: "onprem" | null;
         move_database: "cloud" | "local" | null;
+        edge_snapshot: boolean | null;
+        edge_queue: boolean | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
           p.branch, p.root_dir, p.port, p.health_path, p.env, p.database,
-          p.database_location, p.database_url, p.deployment_mode, p.cloud_provider, p.app_name, d.move, d.move_database FROM deployments d
+          p.database_location, p.database_url, p.deployment_mode, p.cloud_provider, p.app_name, d.move, d.move_database,
+          p.edge_snapshot, p.edge_queue FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -151,6 +154,8 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
             : row.target === "onprem"
               ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
               : {}),
+          // 배포 화면의 엣지 체크박스 (온프레미스). null 이면 builder 에 보내지 않는다
+          ...(row.target === "onprem" ? { edgeSnapshot: row.edge_snapshot, edgeQueue: row.edge_queue } : {}),
         },
         };
       });
