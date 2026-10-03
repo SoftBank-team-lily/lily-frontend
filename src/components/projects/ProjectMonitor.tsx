@@ -11,6 +11,7 @@ import { PlaceBadgeView } from "./PlaceBadge";
 import { StatusOverview } from "./StatusOverview";
 import { BurstPanel } from "./BurstPanel";
 import { MetricChart } from "./MetricChart";
+import { SchemaPanel } from "./SchemaPanel";
 
 /** 거점·버스팅은 몇 초 단위로 바뀐다. 클러스터 지표는 30초 간격으로 쌓인다 */
 const PROJECT_MS = 4_000;
@@ -304,6 +305,8 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
           </div>
         )}
       </section>
+
+      {!onprem && <SchemaPanel projectId={project.id} />}
 
       {pods && pods.length > 0 && (
         <section aria-labelledby="pods-title">

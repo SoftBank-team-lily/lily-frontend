@@ -230,3 +230,27 @@ export type ProjectEntry = {
   project: ReadyProject;
   destination: string | null;
 };
+/** lily-cicd 의 스키마 이력. pgroll 은 마이그레이션 이름·active/complete/baseline, Flyway 는 버전·applied/failed */
+export type SchemaEntry = {
+  version: string | null;
+  description: string | null;
+  state: "active" | "complete" | "baseline" | "applied" | "failed";
+  startedAt: string | null;
+  completedAt: string | null;
+};
+/** 프로젝트 상세의 스키마 이력 패널. window 가 있으면 그 시각까지 스키마까지 롤백할 수 있다 */
+export type ProjectSchema = {
+  engine: "pgroll" | "flyway" | null;
+  database: string | null;
+  currentVersion: string | null;
+  window: { migration: string; slot: string; completeAfter: string | null } | null;
+  slots: {
+    slot: string;
+    schemaVersion: string | null;
+    replicas: number;
+    deployedAt: string | null;
+    pgrollState: string | null;
+  }[];
+  history: SchemaEntry[];
+  message: string | null;
+};

@@ -21,13 +21,15 @@ import {
   burstStatus,
   cancelHome,
   clusterApps,
+  completeSchema,
+  schemaHistory,
   moveHome,
   runtimeOf,
   sendBurst,
   type BurstStatus,
 } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, BurstLive, ProjectBurst } from "./types";
+import type { AppRuntime, BurstLive, ProjectBurst, ProjectSchema } from "./types";
 import { databaseMoveOffer } from "./burst";
 
 type Row = {
@@ -354,6 +356,36 @@ export async function setRunning(ownerId: string, id: string, running: boolean) 
       "클러스터에 이 앱이 없어요. 다시 배포해 주세요.",
     );
   return getProject(ownerId, id, true);
+}
+/**
+ * 클라우드 앱의 스키마 이력과 pgroll 롤백 창. 아직 배포하지 않았거나 클러스터에서 확인하지 못했으면 schema 가 null.
+ * 온프레미스 앱은 내 PC 에서 Flyway 로 적용해서 여기서는 보지 않는다.
+ */
+export async function getSchema(
+  ownerId: string,
+  id: string,
+): Promise<{ schema: ProjectSchema | null }> {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name) return { schema: null };
+  const schema = await schemaHistory(row.app_name);
+  if (!schema?.message) return { schema };
+  return {
+    schema: {
+      ...schema,
+      message: schema.database ? "DB 이력을 읽지 못했어요." : "DB 를 쓰지 않는 앱이에요.",
+    },
+  };
+}
+/**
+ * pgroll 롤백 창을 바로 닫는다. 이후에는 이번 마이그레이션 전으로 스키마를 되돌릴 수 없다.
+ */
+export async function closeSchemaWindow(ownerId: string, id: string) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name)
+    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱만 스키마 롤백 창을 닫을 수 있어요.");
+  assertIdle(row);
+  await completeSchema(row.app_name);
+  return getSchema(ownerId, id);
 }
 /**
  * 프로젝트를 지운다. 클라우드면 클러스터의 앱(Deployment·Service·Ingress·Secret)을 먼저 지우고,
