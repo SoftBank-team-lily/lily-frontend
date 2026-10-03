@@ -161,6 +161,12 @@ export const moveSchema = z
   })
   .strict();
 export type ProjectMove = z.infer<typeof moveSchema>;
+/** 클라우드 전용 앱을 다른 클라우드로 옮기기. start 는 to 가 필요하다 */
+export const cloudMoveSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("start"), to: z.enum(["AWS", "GCP"]) }).strict(),
+  z.object({ action: z.literal("rollback"), discardTargetWrites: z.literal(true) }).strict(),
+  z.object({ action: z.literal("finalize") }).strict(),
+]);
 /** 버스팅 켜기·끄기와 클라우드 비율 (0~100). 0 이어도 대기 Pod 1대는 둔다 */
 export const burstSchema = z
   .object({

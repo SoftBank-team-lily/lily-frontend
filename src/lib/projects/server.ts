@@ -16,14 +16,17 @@ import type {
   ProjectEntry,
 } from "./types";
 import type { BurstInput, ProjectFix, ProjectUpdate, WriteQueueInput } from "./schema";
-import { autoFixAttempt, CANCELLED_MESSAGE } from "@/lib/builder/run";
+import { autoFixAttempt, buildSettings, CANCELLED_MESSAGE } from "@/lib/builder/run";
 import {
   appAction,
   burstStatus,
   cancelBuild,
   cancelHome,
   clusterApps,
+  cloudMoveAction,
+  cloudMoveStatus,
   completeSchema,
+  startCloudMoveOnBuilder,
   schemaHistory,
   moveHome,
   runtimeOf,
@@ -33,7 +36,7 @@ import {
   type BurstStatus,
 } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, BurstLive, CloudProvider, ProjectBurst, ProjectSchema, WriteQueue } from "./types";
+import type { AppRuntime, BurstLive, CloudMove, CloudProvider, ProjectBurst, ProjectSchema, WriteQueue } from "./types";
 import { databaseMoveOffer } from "./burst";
 import { chooseCloudAutomatically } from "./cloudAutomatic";
 import { selectCloud } from "./cloudSelection";
@@ -485,6 +488,74 @@ export async function deleteProject(ownerId: string, id: string, database: boole
   if (row.app_name) removed = await appAction(row.app_name, "delete", database);
   await db.query("DELETE FROM projects WHERE id=$1 AND owner_id=$2", [id, ownerId]);
   return { id, removed };
+}
+/**
+ * 클라우드 전용 앱을 다른 클라우드로 옮긴다 (AWS ↔ GCP, PostgreSQL 은 RDS ↔ Cloud SQL 로 복사).
+ * builder 는 환경변수를 저장하지 않아서 평소 배포와 같은 요청을 만들어 보낸다. 진행은 builder 가 하고,
+ * 화면은 {@link getCloudMove} 로 본다. 옮기기를 마치면 프로젝트 클라우드를 바꾼다 (다음 배포가 새 클라우드로 가게).
+ */
+export async function startCloudMove(ownerId: string, id: string, to: CloudProvider) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || row.deployment_mode === "ONPREM_ONLY")
+    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱만 다른 클라우드로 옮길 수 있어요.");
+  assertIdle(row);
+  if (row.status !== "succeeded" || !row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "클라우드 배포가 끝난 앱만 옮길 수 있어요.");
+  if ((row.cloud_provider ?? "AWS") === to)
+    throw new ApiError(409, "SAME_CLOUD", `이미 ${to} 에 있어요.`);
+  const env = await db.query<{ env: Record<string, string> | null }>(
+    "SELECT env FROM projects WHERE id=$1 AND owner_id=$2",
+    [id, ownerId],
+  );
+  const body = {
+    repoUrl: `https://github.com/${row.repo}`,
+    appName: row.app_name,
+    database: process.env.BUILDER_DATABASE || null,
+    ...buildSettings({
+      branch: row.branch ?? undefined,
+      rootDir: row.root_dir || undefined,
+      port: row.port ?? undefined,
+      healthPath: row.health_path ?? undefined,
+      env: env.rows[0]?.env ?? undefined,
+      database: row.database ?? undefined,
+      deploymentMode: "HYBRID",
+      cloudProvider: to,
+    }),
+  };
+  const move = await startCloudMoveOnBuilder(row.app_name, body);
+  return { move, project: await getProject(ownerId, id) };
+}
+
+/** 옮기기 상태. 끝났으면(HOLD·FINALIZED·ROLLED_BACK) 프로젝트 클라우드를 builder 기록에 맞춘다 */
+export async function getCloudMove(ownerId: string, id: string): Promise<{ move: CloudMove | null }> {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name) return { move: null };
+  const move = await cloudMoveStatus(row.app_name);
+  if (move) await syncCloudProvider(ownerId, id, row.cloud_provider ?? "AWS", move);
+  return { move };
+}
+
+/** HOLD 에서 원본으로 되돌리거나(rollback, 옮긴 뒤 쓴 데이터는 버린다) 원본 클러스터를 정리한다(finalize) */
+export async function finishCloudMove(ownerId: string, id: string, action: "rollback" | "finalize") {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name)
+    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱이 아니에요.");
+  assertIdle(row);
+  const move = await cloudMoveAction(row.app_name, action);
+  await syncCloudProvider(ownerId, id, row.cloud_provider ?? "AWS", move);
+  return { move, project: await getProject(ownerId, id) };
+}
+
+/** builder 가 옮기기를 마쳤거나 되돌렸으면 프로젝트 클라우드를 따라 바꾼다. 일반 수정은 여전히 클라우드를 잠근다 */
+async function syncCloudProvider(ownerId: string, id: string, current: CloudProvider, move: CloudMove) {
+  const settled =
+    move.state === "HOLD" || move.state === "FINALIZED"
+      ? move.to
+      : move.state === "ROLLED_BACK"
+        ? move.from
+        : null;
+  if (!settled || settled === current) return;
+  await db.query("UPDATE projects SET cloud_provider=$3 WHERE id=$1 AND owner_id=$2", [id, ownerId, settled]);
 }
 /** 에이전트의 앱 이름 규칙 (lily-on-premise DeployJob). 클라우드 앱 이름이 이보다 길면 내 PC 로 옮길 수 없다 */
 const AGENT_APP_NAME = /^[a-z][a-z0-9-]{0,30}$/;

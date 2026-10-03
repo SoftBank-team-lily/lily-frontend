@@ -69,3 +69,20 @@ describe("프로젝트 입력 검증", async () => {
     expect(() => validate(projectSchema, { repo: "o/r", target: "cloud", edgeSnapshot: true })).toThrow();
   });
 });
+
+describe("다른 클라우드로 옮기기 입력", async () => {
+  const { cloudMoveSchema, validate } = await import("./schema");
+
+  it("시작은 옮길 클라우드를 받고, 되돌리기는 새 쪽 쓰기를 버린다는 확인이 있어야 한다", () => {
+    expect(validate(cloudMoveSchema, { action: "start", to: "GCP" })).toEqual({ action: "start", to: "GCP" });
+    expect(validate(cloudMoveSchema, { action: "finalize" })).toEqual({ action: "finalize" });
+    expect(validate(cloudMoveSchema, { action: "rollback", discardTargetWrites: true })).toEqual({
+      action: "rollback",
+      discardTargetWrites: true,
+    });
+    expect(() => validate(cloudMoveSchema, { action: "start" })).toThrow();
+    expect(() => validate(cloudMoveSchema, { action: "start", to: "AZURE" })).toThrow();
+    expect(() => validate(cloudMoveSchema, { action: "rollback" })).toThrow();
+    expect(() => validate(cloudMoveSchema, { action: "rollback", discardTargetWrites: false })).toThrow();
+  });
+});

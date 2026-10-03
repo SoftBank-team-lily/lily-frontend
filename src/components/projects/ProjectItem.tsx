@@ -11,6 +11,7 @@ import {
 } from "@/lib/projects/client";
 import { FixPanel } from "./FixPanel";
 import { MovePanel } from "./MovePanel";
+import { CloudMovePanel } from "./CloudMovePanel";
 import type { AppState, Project, DeploymentStatus } from "@/lib/projects/types";
 import { STAGES } from "@/lib/deploy/stages";
 import { placeBadge } from "@/lib/projects/burst";
@@ -69,6 +70,9 @@ export function ProjectItem({
   const movingNow = deploying && latest?.move === "onprem";
   const canMove =
     project.target === "cloud" && latest?.status === "succeeded" && !deploying;
+  /** 다른 클라우드로 옮기기 창 (AWS ↔ GCP) */
+  const [cloudMoving, setCloudMoving] = useState(false);
+  const canCloudMove = canMove && project.deploymentMode !== "ONPREM_ONLY";
   /** 중지·다시 시작·삭제. 실패하면 이유를 보인다 */
   async function act(operation: () => Promise<void>) {
     if (lock.current) return;
@@ -498,6 +502,19 @@ export function ProjectItem({
               {t("클라우드 → 온프레미스 전환")}
             </button>
           )}
+          {canCloudMove && !cloudMoving && (
+            <button
+              type="button"
+              onClick={() => {
+                setCloudMoving(true);
+                setError("");
+              }}
+              disabled={busy}
+              className="text-mute hover:text-ink disabled:opacity-40"
+            >
+              {t("다른 클라우드로 옮기기")}
+            </button>
+          )}
           {!deploying && (
             <button
               type="button"
@@ -541,6 +558,13 @@ export function ProjectItem({
             onUpdate(value);
           }}
           onCancel={() => setMoving(false)}
+        />
+      )}
+      {cloudMoving && project.target === "cloud" && !editing && (
+        <CloudMovePanel
+          project={project}
+          onUpdate={onUpdate}
+          onClose={() => setCloudMoving(false)}
         />
       )}
       {deleting && !editing && (
