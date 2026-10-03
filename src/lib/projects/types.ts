@@ -292,4 +292,11 @@ export type WriteQueue = {
   paths: string[];
   counts: { queued: number; sent: number; failed: number };
   items: WriteQueueItem[];
+  /**
+   * 재전송 전 마지막 PC 확인 (GET /). status null: 응답 없음, edge: Cloudflare 가 만든 오류(PC 에 닿지 않음),
+   * appErrors: 앱의 5xx 가 이어진 수 (10번이면 보내 본다). 아직 확인한 적 없으면 null
+   */
+  lastCheck?: { at: string; status: number | null; edge: boolean; appErrors: number } | null;
+  /** PC 장애로 보고 새 POST 를 쌓기 시작한 시각. PC 확인이 성공하면 null */
+  downSince?: string | null;
 };

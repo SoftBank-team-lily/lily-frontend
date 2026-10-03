@@ -788,5 +788,14 @@
   "자동 · JEV": "Automatic · JEV",
   "수동 선택": "Manual selection",
   "자동 선택": "Automatic selection",
-  "JEV가 저장소 적합성을 판단해 AWS 또는 GCP를 선택해요. 판단을 보류하면 수동으로 선택할 수 있어요.": "JEV evaluates repository suitability and selects AWS or GCP. If it cannot decide, you can select manually."
+  "JEV가 저장소 적합성을 판단해 AWS 또는 GCP를 선택해요. 판단을 보류하면 수동으로 선택할 수 있어요.": "JEV evaluates repository suitability and selects AWS or GCP. If it cannot decide, you can select manually.",
+  "PC 상태": "PC status",
+  "장애로 보고 새 POST 를 쌓는 중 · {{value0}}부터": "Treated as down, keeping new POSTs · since {{value0}}",
+  "정상 (POST 를 PC 로 바로 보냄)": "Up (POSTs go straight to the PC)",
+  "마지막 PC 확인": "Last PC check",
+  "아직 없음": "None yet",
+  "응답 없음 (기다림)": "No response (waiting)",
+  "{{value0}} Cloudflare 오류 · PC 에 닿지 않음 (기다림)": "{{value0}} Cloudflare error · PC unreachable (waiting)",
+  "{{value0}} 앱 오류 · {{value1}}번째 (10번이면 보내 봄)": "{{value0}} app error · #{{value1}} (sends after 10)",
+  "{{value0}} 응답 · PC 에 닿음": "{{value0}} response · PC reachable"
 }
