@@ -261,6 +261,23 @@ export type SchemaEntry = {
   state: "active" | "complete" | "baseline" | "applied" | "failed";
   startedAt: string | null;
 };
+/**
+ * 클라우드 전용 앱을 다른 클라우드로 옮기기 (lily-builder /api/apps/{app}/migrate).
+ * RUNNING: 옮기는 중. HOLD: 옮겼고 원본은 내려 둔 채 보관 (되돌리기·정리 가능). FINALIZED: 원본 정리까지 끝.
+ * FAILED: 실패해서 원본으로 되돌렸다. ROLLED_BACK: HOLD 에서 사용자가 원본으로 되돌렸다
+ */
+export type CloudMove = {
+  id: string;
+  from: CloudProvider;
+  to: CloudProvider;
+  state: "RUNNING" | "HOLD" | "FINALIZED" | "FAILED" | "ROLLED_BACK";
+  step: string;
+  downtimeMs: number | null;
+  startedAt: string;
+  updatedAt: string;
+  /** 실패 이유. 실패가 아니면 null */
+  message: string | null;
+};
 /** 프로젝트 상세의 스키마 이력 패널. window 가 있으면 그 시각까지 스키마까지 롤백할 수 있다 */
 export type ProjectSchema = {
   engine: "pgroll" | "flyway" | null;

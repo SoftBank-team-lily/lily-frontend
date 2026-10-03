@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime, BuildProgress, BurstLive, ProjectSchema, WriteQueue } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive, CloudMove, ProjectSchema, WriteQueue } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -360,4 +360,78 @@ export async function completeSchema(appName: string) {
     console.error(`builder schema complete ${appName}: ${response.status} ${await response.text()}`);
     throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
   }
+}
+
+type BuilderMove = Omit<CloudMove, "message"> & { logs?: string[] };
+
+function cloudMove(view: BuilderMove): CloudMove {
+  const failed = view.logs?.find((line) => line.startsWith("migrate: failed at "));
+  return {
+    id: view.id,
+    from: view.from,
+    to: view.to,
+    state: view.state,
+    step: view.step,
+    downtimeMs: view.downtimeMs ?? null,
+    startedAt: view.startedAt,
+    updatedAt: view.updatedAt,
+    message: view.state === "FAILED" && failed ? failed.replace(/^migrate: failed at \w+: /, "") : null,
+  };
+}
+
+async function builderReason(response: Response) {
+  const body = (await response.json().catch(() => null)) as { message?: string } | null;
+  return body?.message ?? "";
+}
+
+/** 이 앱을 다른 클라우드로 옮긴 가장 최근 기록. 없거나 builder 가 없으면 null */
+export async function cloudMoveStatus(appName: string): Promise<CloudMove | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/migrate`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return cloudMove((await response.json()) as BuilderMove);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 옮기기를 시작한다. body 는 평소 배포 요청(환경변수 포함)에 cloudProvider 만 옮길 클라우드로 바꾼 것.
+ * @throws ApiError builder 가 거절한 이유(400·409)를 그대로 보인다
+ */
+export async function startCloudMoveOnBuilder(appName: string, body: object): Promise<CloudMove> {
+  return cloudMoveCall(appName, "", body);
+}
+
+/** HOLD 에서 원본으로 되돌리거나(rollback) 원본을 정리한다(finalize) */
+export async function cloudMoveAction(appName: string, action: "rollback" | "finalize"): Promise<CloudMove> {
+  return cloudMoveCall(appName, `/${action}`, action === "rollback" ? { discardTargetWrites: true } : undefined);
+}
+
+async function cloudMoveCall(appName: string, path: string, body: object | undefined): Promise<CloudMove> {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/migrate${path}`, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+    // 되돌리기는 원본 Ready 와 주소 반영을 기다린다
+    signal: AbortSignal.timeout(path === "/rollback" ? 300_000 : 60_000),
+  });
+  if (response.status === 400 || response.status === 409) {
+    const reason = await builderReason(response);
+    throw new ApiError(409, "CLOUD_MOVE_REJECTED", reason ? `옮길 수 없어요: ${reason}` : "지금은 옮길 수 없어요.");
+  }
+  if (!response.ok) {
+    console.error(`builder migrate${path} ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+  return cloudMove((await response.json()) as BuilderMove);
 }
