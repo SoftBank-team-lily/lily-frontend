@@ -220,6 +220,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         url: string | null;
         logs?: string[];
         diagnosis?: Diagnosis | null;
+        commit?: string | null;
       };
       return {
         status: build.status,
@@ -227,6 +228,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         message: resultLine(build.logs),
         logs: build.logs ?? [],
         diagnosis: build.diagnosis ?? null,
+        commit: build.commit ?? null,
       };
     },
     async autoFix(deploymentId, diagnosis) {
@@ -273,6 +275,9 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         "UPDATE builder_runs SET stage=$2, logs=$3::jsonb WHERE deployment_id=$1",
         [deploymentId, stage, JSON.stringify(logs)],
       );
+    },
+    async saveCommit(deploymentId, sha) {
+      await db.query("UPDATE builder_runs SET commit_sha=$2 WHERE deployment_id=$1", [deploymentId, sha]);
     },
     async freezeCloud(app) {
       await appAction(app, "stop");

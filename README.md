@@ -396,3 +396,5 @@ DB 가용성 확인을 대신하지 않습니다. DB 풀은 프로세스당 최�
 ## 다국어 UI
 
 한국어(기본) · 영어 · 일본어를 상단 지구본 메뉴에서 선택할 수 있습니다. 프런트와 대시보드 사이에서도 설정을 유지합니다. 번역 추가와 연결 방식은 [언어 설정 문서](docs/i18n.md)를 참고하세요.
+
+GitHub App 설치와 수정 PR 서버 연결은 [GITHUB-APP.md](docs/GITHUB-APP.md)를 참고하세요. main의 기존 SQL 번호와 겹치던 GitHub/수정 PR SQL은 014~016으로 옮겼습니다. 기존 main DB에서는 `pnpm db:migrate`로 적용합니다.

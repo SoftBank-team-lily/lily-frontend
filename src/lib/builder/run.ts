@@ -43,6 +43,8 @@ export type BuildState = {
   diagnosis?: Diagnosis | null;
   /** builder 로그 끝부분. 화면이 진행 단계와 로그를 보여 준다 */
   logs?: string[];
+  /** 이미지를 만든 커밋. 없으면 로그 사고 PR 을 열지 않는다 */
+  commit?: string | null;
 };
 /** 화면에 남기는 로그 줄 수 */
 export const PROGRESS_LINES = 40;
@@ -112,6 +114,8 @@ export type RunDeps = {
   autoFix?(deploymentId: string, diagnosis: Diagnosis): Promise<boolean>;
   /** 진행 중인 builder 상태와 로그 끝부분을 남긴다 */
   saveProgress?(deploymentId: string, stage: string, logs: string[]): Promise<void>;
+  /** 배포된 커밋. 컬럼이 없으면 배포 상태 갱신을 막지 않는다 */
+  saveCommit?(deploymentId: string, sha: string): Promise<void>;
   event(
     deploymentId: string,
     status: "running" | FinalStatus,
@@ -142,6 +146,14 @@ export async function runOnce(deps: RunDeps) {
           state.status,
           (state.logs ?? []).slice(-PROGRESS_LINES),
         );
+      const sha = commitSha(state?.commit);
+      if (sha) {
+        try {
+          await deps.saveCommit?.(active.deploymentId, sha);
+        } catch (error) {
+          log(`배포 ${active.deploymentId} 커밋 저장 실패: ${message(error)}`);
+        }
+      }
       const result = finalStatus(state?.status ?? null);
       // queued 에서 바로 succeeded 로는 바꿀 수 없다. running 을 먼저 기록한다
       if (active.status === "queued")
@@ -330,6 +342,11 @@ export function resultLine(logs: string[] | undefined): string | null {
   return last
     .replace(/^agent: (FAILED|SUCCEEDED)\s*/, "")
     .replace(/^(failed|rolled back|done):\s*/, "");
+}
+
+/** 배포 커밋 SHA. 형식이 아니면 null */
+export function commitSha(value: string | null | undefined) {
+  return value && /^[0-9a-f]{40}$/.test(value) ? value : null;
 }
 
 function message(error: unknown) {

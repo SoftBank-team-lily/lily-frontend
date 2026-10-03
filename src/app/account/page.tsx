@@ -8,8 +8,18 @@ import { AccountForm } from "@/components/auth/AccountForm";
 import { PasswordForm } from "@/components/auth/PasswordForm";
 import { SessionGuard } from "@/components/auth/SessionGuard";
 
-export default async function AccountPage() {
+const githubMessages: Record<string, string> = {
+  connected: "GitHub 저장소를 연결했어요.",
+  denied: "GitHub 연결을 확인하지 못했어요. 다시 연결해 주세요.",
+  taken: "이 GitHub 설치는 다른 계정에 연결되어 있어요.",
+  unconfigured: "서버에 GitHub App 설정이 아직 없어요.",
+  error: "GitHub 저장소 목록을 읽지 못했어요. 잠시 후 다시 연결해 주세요.",
+};
+
+export default async function AccountPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const t = await getTranslator();
+  const query = await searchParams;
+  const message = typeof query.github === "string" ? githubMessages[query.github] : undefined;
   const user = await getUser();
   if (!user) redirect("/login?next=%2Faccount");
   return (
@@ -19,6 +29,7 @@ export default async function AccountPage() {
       navigation={<AuthNav user={user} />}
     >
       <SessionGuard key={user.id} userId={user.id}>
+        {message && <p role="status" className="mb-5 text-note text-mute">{t(message)}</p>}
         <AccountForm key={`account:${user.id}`} user={user} />
         <Link
           href="/projects"

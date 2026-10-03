@@ -2,6 +2,8 @@ import "server-only";
 import { randomBytes, randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api";
+import { attachProjectIfInstalled } from "@/lib/github/install";
+import { createWebhookSecret, type WebhookProject } from "@/lib/github/webhook";
 import type {
   Project,
   ProjectPage,
@@ -48,6 +50,8 @@ type Row = {
   health_path: string | null;
   env_keys: string[];
   unset_keys: string[];
+  webhook_secret: string | null;
+  github_installation_id: string | null;
   created_at: Date;
   deployment_id: string | null;
   status: DeploymentStatus | null;
@@ -65,7 +69,8 @@ type Row = {
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
 const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.database_location, p.database, p.app_name AS fixed_app_name,
   p.burst_enabled, p.burst_cloud_percent,
-  p.root_dir, p.branch, p.port, p.health_path,
+  p.root_dir, p.branch, p.port, p.health_path, p.webhook_secret,
+  p.github_installation_id::text AS github_installation_id,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
   ARRAY(SELECT key FROM jsonb_each_text(p.env) WHERE value='unset' ORDER BY 1) AS unset_keys, p.created_at, d.id AS deployment_id, d.status, r.url, r.message, r.stage, r.logs,
   r.diagnosis, d.request_key, d.move,
@@ -152,6 +157,9 @@ function project(
     healthPath: row.health_path,
     envKeys: row.env_keys,
     unsetKeys: row.unset_keys ?? [],
+    webhookSecret: row.github_installation_id ? "" : (row.webhook_secret ?? ""),
+    webhookUrl: row.github_installation_id ? "" : webhookUrl(),
+    githubApp: Boolean(row.github_installation_id),
     createdAt: row.created_at.toISOString(),
     runtime: row.target === "cloud" ? runtimeOf(apps, row.app_name) : null,
     cloudPods: burstable(row) && apps ? runtimeOf(apps, row.app_name) : null,
@@ -192,6 +200,7 @@ export async function listProjects(
     [ownerId, cursor, limit + 1],
   );
   const rows = result.rows.slice(0, limit);
+  await ensureWebhookSecrets(rows);
   const [apps, bursts] = await Promise.all([
     rows.some((row) => row.app_name) ? clusterApps() : null,
     burstsOf(rows),
@@ -209,6 +218,7 @@ async function projectRow(ownerId: string, id: string) {
   );
   if (!result.rows[0])
     throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
+  await ensureWebhookSecrets(result.rows);
   return result.rows[0];
 }
 /** @param withRuntime true 면 클러스터 앱 상태도 채운다 (builder 를 부른다) */
@@ -536,8 +546,8 @@ export async function createProject(
   const rootDir = settings.rootDir ?? "";
   await db.query(
     `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, branch, root_dir, port, health_path, env, database,
-      database_location, database_url)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      database_location, database_url, webhook_secret)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
     [
       id,
       ownerId,
@@ -563,8 +573,14 @@ export async function createProject(
       mode !== "ONPREM_ONLY" && target === "onprem" && settings.databaseLocation === "external"
         ? (settings.databaseUrl ?? null)
         : null,
+      createWebhookSecret(),
     ],
   );
+  try {
+    await attachProjectIfInstalled(ownerId, id, repo);
+  } catch {
+    console.error("등록한 프로젝트를 GitHub 설치에 연결하지 못했습니다.");
+  }
   return getProject(ownerId, id);
 }
 /** 이름과 배포 설정을 바꾼다. 다음 배포부터 쓴다 (지금 떠 있는 앱은 다시 배포해야 바뀐다) */
@@ -694,6 +710,26 @@ export async function listDeployments(ownerId: string, projectId: string) {
   );
   return result.rows.map(deployment);
 }
+/** push 웹훅이 저장소 이름으로 프로젝트를 찾는다. 시크릿이 없는 예전 행은 서명에 맞지 않는다 */
+export async function projectsForWebhook(repo: string): Promise<WebhookProject[]> {
+  const result = await db.query<{
+    id: string;
+    owner_id: string;
+    branch: string | null;
+    webhook_secret: string | null;
+    github_installation_id: string | null;
+  }>(
+    "SELECT id, owner_id, branch, webhook_secret, github_installation_id::text AS github_installation_id FROM projects WHERE repo=$1",
+    [repo],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    ownerId: row.owner_id,
+    branch: row.branch,
+    secret: row.webhook_secret,
+    installationId: row.github_installation_id,
+  }));
+}
 export async function createDeployment(
   ownerId: string,
   projectId: string,
@@ -802,6 +838,8 @@ export async function getProjectEntry(
   return {
     project: {
       ...result,
+      webhookSecret: "",
+      webhookUrl: "",
       latestDeployment: {
         id: result.latestDeployment.id,
         status: "succeeded",
@@ -817,4 +855,38 @@ export async function getProjectEntry(
     },
     destination,
   };
+}
+
+function webhookUrl() {
+  const configured = process.env.BETTER_AUTH_URL?.trim();
+  if (!configured) return "";
+  try {
+    return `${new URL(configured).origin}/api/github/webhook`;
+  } catch {
+    return "";
+  }
+}
+
+/** 마이그레이션 전에 만든 프로젝트는 처음 조회할 때 시크릿을 채운다 */
+async function ensureWebhookSecrets(rows: Row[]) {
+  for (const row of rows) {
+    if (row.webhook_secret) continue;
+    const secret = createWebhookSecret();
+    const updated = await db.query<{ webhook_secret: string }>(
+      "UPDATE projects SET webhook_secret=$2 WHERE id=$1 AND webhook_secret IS NULL RETURNING webhook_secret",
+      [row.id, secret],
+    );
+    if (updated.rows[0]) {
+      row.webhook_secret = updated.rows[0].webhook_secret;
+      continue;
+    }
+    const current = await db.query<{ webhook_secret: string | null }>(
+      "SELECT webhook_secret FROM projects WHERE id=$1",
+      [row.id],
+    );
+    const value = current.rows[0]?.webhook_secret;
+    if (!value)
+      throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
+    row.webhook_secret = value;
+  }
 }

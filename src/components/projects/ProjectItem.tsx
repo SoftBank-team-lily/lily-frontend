@@ -321,6 +321,7 @@ export function ProjectItem({
           </pre>
         </details>
       )}
+      <WebhookSetup project={project} branch={project.branch || "main"} />
       {editing ? (
         <form onSubmit={save} className="mt-4 space-y-3" aria-busy={busy}>
           <fieldset disabled={busy} className="flex flex-col gap-3">
@@ -419,11 +420,12 @@ export function ProjectItem({
         <div className="mt-4 flex flex-wrap items-center gap-4 text-caption">
           <button
             type="button"
+            disabled={moving}
             onClick={() => {
               setEditing(true);
               setError("");
             }}
-            className="text-mute hover:text-ink"
+            className="text-mute hover:text-ink disabled:opacity-40"
           >
             {t("설정")}
           </button>
@@ -431,7 +433,7 @@ export function ProjectItem({
             <button
               type="button"
               onClick={redeploy}
-              disabled={busy}
+              disabled={busy || moving}
               className="text-mute hover:text-ink disabled:opacity-40"
             >
               {busy ? t("요청 중…") : t("다시 배포")}
@@ -565,5 +567,77 @@ export function ProjectItem({
         {t(error)}
       </p>
     </li>
+  );
+}
+
+function WebhookSetup({
+  project,
+  branch,
+}: {
+  project: Project;
+  branch: string;
+}) {
+  if (project.githubApp)
+    return (
+      <div className="mt-4 border-t border-line pt-4">
+        <p className="text-caption text-mute">
+          GitHub App이 연결되어 있어요. {branch}에 푸시하면 이 프로젝트를 다시
+          배포해요.
+        </p>
+      </div>
+    );
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <p className="text-caption text-mute">
+        <a href="/api/github/install" className="text-ink underline">
+          GitHub 연결
+        </a>
+        을 누르면 저장소를 고르는 화면으로 이동해요. 연결한 뒤에는 아래 값을
+        붙이지 않아도 {branch} 푸시가 배포돼요.
+      </p>
+      <p className="mt-2 text-caption text-mute">
+        앱을 쓰기 전에는 GitHub 저장소의 Settings → Webhooks에 아래 값을
+        넣으세요. Content type은 application/json, 이벤트는 push만 고르세요.
+      </p>
+      {project.webhookUrl ? (
+        <CopyLine label="Payload URL" value={project.webhookUrl} />
+      ) : (
+        <p className="mt-2 text-caption text-danger">
+          서버 주소가 없어 웹훅 주소를 만들지 못했어요.
+        </p>
+      )}
+      <CopyLine label="Secret" value={project.webhookSecret ?? ""} />
+      <p className="mt-2 text-caption text-mute">
+        같은 저장소의 다른 폴더는 웹훅을 하나씩 더 추가해 주세요.
+      </p>
+    </div>
+  );
+}
+
+function CopyLine({ label, value }: { label: string; value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-caption text-mute">{label}</p>
+        <button
+          type="button"
+          className="text-caption text-mute hover:text-ink"
+          aria-label={done ? `${label} 복사됨` : `${label} 복사`}
+          aria-live="polite"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(value);
+              setDone(true);
+            } catch {
+              setDone(false);
+            }
+          }}
+        >
+          {done ? "복사됨" : "복사"}
+        </button>
+      </div>
+      <p className="mt-1 break-all font-mono text-caption text-ink">{value}</p>
+    </div>
   );
 }

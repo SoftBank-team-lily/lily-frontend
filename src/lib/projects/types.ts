@@ -186,6 +186,9 @@ export type Project = {
   envKeys: string[];
   /** 값을 몰라 unset 으로 넣은 키. 넣으면 그 기능이 켜진다 */
   unsetKeys: string[];
+  webhookSecret?: string;
+  webhookUrl?: string;
+  githubApp?: boolean;
   createdAt: string;
   /** 클러스터 앱 상태. 온프레미스이거나, 아직 보낸 적 없거나, 확인하지 못했으면 null */
   runtime: AppRuntime | null;
