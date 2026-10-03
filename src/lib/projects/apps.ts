@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime, BuildProgress, BurstLive, ProjectSchema } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive, ProjectSchema, WriteQueue } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -129,6 +129,51 @@ export async function burstStatus(appName: string): Promise<BurstStatus | null> 
   } catch {
     return null;
   }
+}
+
+/** 엣지 쓰기 큐 상태. builder 에서 큐가 꺼져 있으면 enabled=false, 확인하지 못했으면 null */
+export async function writeQueueStatus(
+  appName: string,
+): Promise<{ enabled: true; queue: WriteQueue } | { enabled: false } | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/write-queue`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.status === 404) return { enabled: false };
+    if (!response.ok) return null;
+    return { enabled: true, queue: (await response.json()) as WriteQueue };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 엣지 쓰기 큐 등록 경로를 바꾼다. 빈 목록이면 새 POST 는 쌓지 않는다.
+ * @throws ApiError builder 에서 큐가 꺼져 있음(409), 경로가 맞지 않음(400), Cloudflare 에 닿지 못함(502)
+ */
+export async function sendWriteQueue(appName: string, paths: string[]): Promise<WriteQueue> {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/write-queue`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 404)
+    throw new ApiError(409, "QUEUE_OFF", "이 플랫폼에서는 엣지 쓰기 큐가 꺼져 있어요.");
+  if (response.status === 400)
+    throw new ApiError(400, "INVALID_PATHS", "경로는 / 로 시작하고 ?, #, 공백이 없어야 해요.");
+  if (!response.ok) {
+    console.error(`builder write-queue ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "Cloudflare 에 경로를 저장하지 못했어요. 잠시 뒤 다시 저장해 주세요.");
+  }
+  return (await response.json()) as WriteQueue;
 }
 
 /**

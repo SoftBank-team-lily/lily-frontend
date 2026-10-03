@@ -270,3 +270,23 @@ export type ProjectSchema = {
   history: SchemaEntry[];
   message: string | null;
 };
+export type WriteQueueItem = {
+  queuedId: string;
+  path: string;
+  /** queued: PC 복구를 기다림, sent: PC 가 2xx·3xx 로 받음, failed: PC 가 4xx 로 거절했거나 풀 수 없음 */
+  state: "queued" | "sent" | "failed";
+  status: number | null;
+  attempts: number;
+  receivedAt: string;
+  updatedAt: string;
+};
+/**
+ * 온프레미스 앱의 엣지 쓰기 큐. PC 장애 때 paths 아래 POST 를 Cloudflare 에 쌓았다가 PC 가 돌아오면 순서대로 다시 보낸다.
+ * routed=false 면 공개 주소에 엣지 Worker 가 없어 경로를 등록해도 쓰이지 않는다 (null: 확인하지 못함)
+ */
+export type WriteQueue = {
+  routed: boolean | null;
+  paths: string[];
+  counts: { queued: number; sent: number; failed: number };
+  items: WriteQueueItem[];
+};
