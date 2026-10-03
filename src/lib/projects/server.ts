@@ -15,7 +15,7 @@ import type {
   Diagnosis,
   ProjectEntry,
 } from "./types";
-import type { BurstInput, ProjectFix, ProjectUpdate } from "./schema";
+import type { BurstInput, ProjectFix, ProjectUpdate, WriteQueueInput } from "./schema";
 import { autoFixAttempt, CANCELLED_MESSAGE } from "@/lib/builder/run";
 import {
   appAction,
@@ -28,10 +28,12 @@ import {
   moveHome,
   runtimeOf,
   sendBurst,
+  sendWriteQueue,
+  writeQueueStatus,
   type BurstStatus,
 } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, BurstLive, CloudProvider, ProjectBurst, ProjectSchema } from "./types";
+import type { AppRuntime, BurstLive, CloudProvider, ProjectBurst, ProjectSchema, WriteQueue } from "./types";
 import { databaseMoveOffer } from "./burst";
 import { selectCloud } from "./cloudSelection";
 
@@ -424,6 +426,29 @@ export async function getSchema(
       message: schema.database ? "DB 이력을 읽지 못했어요." : "DB 를 쓰지 않는 앱이에요.",
     },
   };
+}
+/**
+ * 온프레미스 앱의 엣지 쓰기 큐. 등록 경로와 쌓인 요청은 Cloudflare(앱의 Durable Object)에 있고 builder 로 읽는다.
+ * available=false: 아직 배포하지 않았거나 플랫폼에서 큐가 꺼져 있음. queue=null: 확인하지 못함
+ */
+export async function getWriteQueue(
+  ownerId: string,
+  id: string,
+): Promise<{ available: boolean; queue: WriteQueue | null }> {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "onprem" || !row.app_name) return { available: false, queue: null };
+  const status = await writeQueueStatus(row.app_name);
+  if (status === null) return { available: true, queue: null };
+  return status.enabled ? { available: true, queue: status.queue } : { available: false, queue: null };
+}
+/** 엣지 쓰기 큐 등록 경로를 바꾼다. 빈 목록이면 끈다 (이미 쌓인 요청은 PC 가 돌아오면 계속 보낸다) */
+export async function updateWriteQueue(ownerId: string, id: string, input: WriteQueueInput) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "onprem")
+    throw new ApiError(409, "CLOUD", "엣지 쓰기 큐는 온프레미스 앱에서만 써요.");
+  if (!row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "먼저 내 PC 로 배포해 주세요.");
+  return { available: true, queue: await sendWriteQueue(row.app_name, input.paths) };
 }
 /**
  * pgroll 롤백 창을 바로 닫는다. 이후에는 이번 마이그레이션 전으로 스키마를 되돌릴 수 없다.

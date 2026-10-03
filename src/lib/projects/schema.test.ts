@@ -48,4 +48,17 @@ describe("프로젝트 입력 검증", async () => {
     expect(validate(homeSchema, { home: "cloud" })).toEqual({ home: "cloud" });
     expect(() => validate(homeSchema, { home: "edge" })).toThrow();
   });
+
+  it("쓰기 큐 경로는 / 로 시작하고 ?·#·공백이 없는 20개까지 받고, 빈 목록은 끄기로 받는다", async () => {
+    const { writeQueueSchema } = await import("./schema");
+    expect(validate(writeQueueSchema, { paths: [" /posts ", "/comments/"] })).toEqual({
+      paths: ["/posts", "/comments/"],
+    });
+    expect(validate(writeQueueSchema, { paths: [] })).toEqual({ paths: [] });
+    expect(() => validate(writeQueueSchema, { paths: ["posts"] })).toThrow();
+    expect(() => validate(writeQueueSchema, { paths: ["/posts?draft=1"] })).toThrow();
+    expect(() => validate(writeQueueSchema, { paths: ["/my posts"] })).toThrow();
+    expect(() => validate(writeQueueSchema, { paths: Array(21).fill("/posts") })).toThrow();
+    expect(() => validate(writeQueueSchema, { paths: ["/posts"], extra: true })).toThrow();
+  });
 });

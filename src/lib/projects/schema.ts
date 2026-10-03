@@ -162,6 +162,20 @@ export const burstSchema = z
   })
   .strict();
 export type BurstInput = z.infer<typeof burstSchema>;
+/** 엣지 쓰기 큐에 넣을 POST 경로. / 로 시작하고 쿼리·공백이 없다 (lily-builder EdgeQueueController 와 같다). 빈 목록이면 끈다 */
+export const writeQueueSchema = z
+  .object({
+    paths: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(/^\/[^?#\s]{0,199}$/, "경로는 / 로 시작하고 ?, #, 공백이 없어야 해요."),
+      )
+      .max(20, "경로는 20개까지 등록할 수 있어요."),
+  })
+  .strict();
+export type WriteQueueInput = z.infer<typeof writeQueueSchema>;
 /** 공개 주소가 가리킬 곳 */
 /** migrateDatabase: 앱 DB 도 옮긴다 (클라우드로: 내 PC → RDS, 내 PC 로: RDS → 내 PC) */
 export const homeSchema = z
