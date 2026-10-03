@@ -607,6 +607,7 @@ export async function updateProject(
     sets.push(`${column}=$${values.length}`);
   };
   if (input.name !== undefined) set("name", input.name);
+  if (input.remediate !== undefined) set("remediate", input.remediate);
   if (input.branch !== undefined) set("branch", input.branch || null);
   if (input.port !== undefined) set("port", input.port);
   if (input.healthPath !== undefined)

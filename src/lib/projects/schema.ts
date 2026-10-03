@@ -131,6 +131,7 @@ export const detectSchema = z
  */
 export const updateSchema = z
   .object({
+    remediate: z.boolean().optional(),
     name: nameSchema.optional(),
     branch: pathSchema.nullable().optional(),
     port: portSchema.nullable().optional(),

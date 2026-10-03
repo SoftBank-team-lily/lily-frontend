@@ -1,3 +1,5 @@
+import type { FixStage } from "./types";
+
 export type RemediateStatus = "off" | "rejected" | "opened";
 
 export type RemediateResult = {
@@ -28,6 +30,7 @@ export type DraftResult =
 export type RemediateDeps = {
   draft: () => Promise<DraftResult>;
   openPull: (files: Record<string, string>) => Promise<string>;
+  progress?: (stage: FixStage, files?: string[]) => Promise<void>;
 };
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -56,12 +59,15 @@ export async function remediate(
   if (incident.files.length === 0) {
     return { status: "rejected", reason: "레포 안 프레임이 없다" };
   }
+  await deps.progress?.("drafting");
   const draft = await deps.draft();
   if (draft.status !== "draft") {
     return { status: draft.status === "off" ? "off" : "rejected", reason: draft.reason };
   }
+  await deps.progress?.("checking");
   const paths = guardPaths(draft.files, incident.files);
   if (!paths.ok) return { status: "rejected", reason: paths.reason };
+  await deps.progress?.("opening-pr", Object.keys(draft.files));
   const url = await deps.openPull(draft.files);
   return { status: "opened", reason: "", url };
 }

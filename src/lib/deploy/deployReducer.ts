@@ -26,6 +26,8 @@ export function deployReducer(
       return { ...initialDeployState(), phase: "running", repo: event.repo };
     case "log":
       return { ...state, log: event.line };
+    case "project":
+      return { ...state, projectId: event.projectId };
     case "stage":
       return { ...state, index: event.index };
     case "progress":

@@ -36,6 +36,7 @@ import { FixPanel } from "@/components/projects/FixPanel";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { useDashboardEntry } from "@/lib/hooks/useDashboardEntry";
 import { DeployStatus } from "@/components/deploy/DeployStatus";
+import { FixProgress } from "@/components/deploy/FixProgress";
 import { FlowerCanvas } from "@/components/flower/FlowerCanvas";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { Reveal } from "@/components/layout/Reveal";
@@ -447,6 +448,7 @@ export function LandingPage({
                   ))}
               </DeployStatus>
             )}
+            <FixProgress key={project?.id ?? state.projectId ?? state.result?.projectId} projectId={project?.id ?? state.projectId ?? state.result?.projectId} />
           </Reveal>
         </main>
       </div>

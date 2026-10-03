@@ -95,6 +95,10 @@ export async function openFixPullRequest(
       }),
     }),
   )) as { html_url?: string };
-  if (!pull.html_url?.startsWith("https://github.com/")) throw new Error("github");
+  if (!pull.html_url) throw new Error("github");
+  const url = new URL(pull.html_url);
+  if (url.origin !== "https://github.com" || url.username || url.password ||
+      !url.pathname.startsWith(`/${repo}/pull/`) || !/^\d+$/.test(url.pathname.split("/").at(-1) ?? "") ||
+      url.search || url.hash) throw new Error("github");
   return pull.html_url;
 }

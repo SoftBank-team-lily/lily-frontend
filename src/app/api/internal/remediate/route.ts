@@ -1,6 +1,7 @@
 import { apiError, json } from "@/lib/api";
 
 export const runtime = "nodejs";
+export const maxDuration = 240;
 
 /** REMEDIATE_ENABLED 가 true 가 아니면 사건 본문도 읽지 않는다. */
 export async function POST(request: Request) {
@@ -9,7 +10,8 @@ export async function POST(request: Request) {
   }
   try {
     const { acceptIncident } = await import("@/lib/remediate/accept");
-    return json(await acceptIncident(request));
+    const result = await acceptIncident(request);
+    return json(result, result.status === "accepted" ? 202 : 200);
   } catch (error) {
     return apiError(error);
   }

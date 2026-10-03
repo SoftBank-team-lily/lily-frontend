@@ -1,6 +1,21 @@
 # AI 코드 수정 진행 표시 계획
 
-작성일: 2026-10-03. 이 문서는 구현 계획이며, 진행 표시 기능은 아직 구현하지 않았습니다.
+작성일: 2026-10-03. 아래는 최초 계획입니다. `feature/ai-fix-progress`에서 구현한 1차 범위는 다음과 같습니다.
+
+## 구현한 1차 범위
+
+- 최신 main에 develop의 GitHub 설치·수정 PR 코드를 통합했습니다. 기존 main의 거점 전환·배포 모드는 유지하고 GitHub SQL 번호를 014~016으로 옮겼습니다.
+- `017-fix-progress.sql`의 `fix_runs`에 접수·진행·변경 파일·PR 결과·단계 시간을 기록합니다. 같은 프로젝트·배포·사건은 한 번만 접수합니다.
+- 사건 API는 기록 후 202를 반환하고 Next.js `after`에서 기존 builder 초안 API와 GitHub PR 생성을 실행합니다.
+- 소유자 전용 `GET /api/projects/:id/fixes`를 추가하고 배포 결과 버튼 아래에 `FixProgress`를 연결했습니다. 한국어·영어·일본어를 지원합니다.
+- 진행 중 3초, 대기·종료 후 새 사건 감지 15초, 숨겨진 탭 60초로 조회합니다. 재접속 시 저장된 이력을 읽고, 10분 넘게 끝나지 않은 작업은 중단된 것으로 표시합니다.
+- 사용자는 패널에서 프로젝트의 AI 수정 PR 허용을 켤 수 있습니다. 마스터 스위치와 GitHub 설치 연결도 필요합니다.
+
+현재 표시 단계는 **장애 확인 → 수정안 생성·검사 → 변경 경로 확인 → 수정 PR 생성 → 검토 대기**입니다. builder 동기 API가 파일 조회·모델 생성·diff 적용 검사를 묶어서 수행하므로 그 내부 단계를 따로 연출하지 않습니다. 변경 내용은 검증된 파일 목록과 실제 GitHub PR에서 확인합니다.
+
+현재 진입점은 배포 후 런타임 장애입니다. 빌드 실패 Groq 수정(F8), builder 내부 상세 진행(F3), 대시보드 재사용(F6)은 후속 범위입니다. `after`는 영속 작업 큐가 아니므로 서버 중단 시 자동 재개·자동 PR 재생성은 수행하지 않습니다. 생성 도중 실패하면 GitHub 브랜치·PR을 확인한 뒤 새 배포에서 재시도합니다.
+
+배포 설정은 [DEPLOY_ENV.md](DEPLOY_ENV.md), 상태 조회는 [progress.ts](../src/lib/remediate/progress.ts), 실행 연결은 [accept.ts](../src/lib/remediate/accept.ts), 화면은 [FixProgress.tsx](../src/components/deploy/FixProgress.tsx)를 참고하세요.
 
 ## 1. 목표
 

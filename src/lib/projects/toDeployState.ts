@@ -14,6 +14,7 @@ export function toDeployState(project: ReadyProject): DeployState {
     wilt: 0,
     log: null,
     result: {
+      projectId: project.id,
       repo: project.repo,
       slug: toSlug(project.repo),
       outcome: "succeeded",

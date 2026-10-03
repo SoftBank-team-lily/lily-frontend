@@ -17,6 +17,7 @@ export type DeployResult = {
 export type FlowerTargets = { progress: number; wilt: number };
 export type DeployEvent =
   | { type: "started"; repo: RepoRef }
+  | { type: "project"; projectId: string }
   | { type: "stage"; index: number }
   | { type: "progress"; index: number; fraction: number }
   | { type: "threshold-exceeded" }
@@ -25,6 +26,7 @@ export type DeployEvent =
   | { type: "succeeded" | "rolled-back" | "failed"; result: DeployResult }
   | { type: "reset" };
 export type DeployState = {
+  projectId?: string;
   phase:
     | "idle"
     | "running"

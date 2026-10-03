@@ -56,6 +56,7 @@ export async function realDeploy({
     return;
   }
 
+  emit({ type: "project", projectId: project.id });
   let shown = 0;
   /** 실패한 배포마다 한 번만 실행기의 자동 재배포를 기다린다 */
   const awaited = new Set<string>();
