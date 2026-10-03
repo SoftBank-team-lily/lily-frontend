@@ -40,6 +40,7 @@ export async function POST(request: Request) {
         databaseLocation: input.databaseLocation,
         databaseUrl: input.databaseUrl,
         deploymentMode: input.deploymentMode,
+        cloudProvider: input.cloudProvider,
         generateEnv: input.generateEnv,
         reuseEnv: input.reuseEnv,
       }),

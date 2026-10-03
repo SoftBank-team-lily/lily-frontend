@@ -31,8 +31,9 @@ import {
   type BurstStatus,
 } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, BurstLive, ProjectBurst, ProjectSchema } from "./types";
+import type { AppRuntime, BurstLive, CloudProvider, ProjectBurst, ProjectSchema } from "./types";
 import { databaseMoveOffer } from "./burst";
+import { selectCloud } from "./cloudSelection";
 
 type Row = {
   id: string;
@@ -40,6 +41,7 @@ type Row = {
   name: string;
   target: DeployTarget;
   deployment_mode: DeploymentMode;
+  cloud_provider: CloudProvider;
   database_location: DatabaseLocation | null;
   burst_enabled: boolean;
   burst_cloud_percent: number;
@@ -64,7 +66,7 @@ type Row = {
   move: "onprem" | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.database_location, p.database, p.app_name AS fixed_app_name,
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.cloud_provider, p.database_location, p.database, p.app_name AS fixed_app_name,
   p.burst_enabled, p.burst_cloud_percent,
   p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
@@ -144,6 +146,7 @@ function project(
     name: row.name,
     target: row.target,
     deploymentMode: row.deployment_mode ?? "HYBRID",
+    cloudProvider: row.cloud_provider === "GCP" ? "GCP" : "AWS",
     databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
     database: row.database ?? null,
     movedFromCloud: row.target === "onprem" && row.fixed_app_name !== null,
@@ -555,6 +558,13 @@ export async function createProject(
   settings: DeploySettings = {},
 ) {
   const mode: DeploymentMode = settings.deploymentMode === "ONPREM_ONLY" ? "ONPREM_ONLY" : "HYBRID";
+  const provider = selectCloud({
+    deploymentMode: mode,
+    requested: settings.cloudProvider,
+    repo,
+    rootDir: settings.rootDir,
+    database: settings.database,
+  });
   if (mode === "ONPREM_ONLY") target = "onprem";
   if (target === "onprem") {
     // 에이전트 하나는 공개 주소 하나, 앱 하나만 띄운다 (lily-on-premise)
@@ -572,9 +582,9 @@ export async function createProject(
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
-    `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, branch, root_dir, port, health_path, env, database,
+    `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, cloud_provider, branch, root_dir, port, health_path, env, database,
       database_location, database_url)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
     [
       id,
       ownerId,
@@ -583,6 +593,7 @@ export async function createProject(
       name ?? (rootDir ? `${repo.split("/")[1]}/${rootDir}` : repo.split("/")[1]),
       target,
       mode,
+      provider,
       settings.branch || null,
       rootDir,
       settings.port ?? null,
@@ -610,16 +621,22 @@ export async function updateProject(
   id: string,
   input: ProjectUpdate,
 ) {
-  if (input.deploymentMode !== undefined) {
+  if (input.deploymentMode !== undefined || input.cloudProvider !== undefined) {
     const row = await projectRow(ownerId, id);
-    if (input.deploymentMode !== (row.deployment_mode ?? "HYBRID"))
+    if (input.deploymentMode !== undefined && input.deploymentMode !== (row.deployment_mode ?? "HYBRID"))
       throw new ApiError(
         409,
         "MODE_LOCKED",
         "배포 모드는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
       );
+    if (input.cloudProvider !== undefined && input.cloudProvider !== (row.cloud_provider ?? "AWS"))
+      throw new ApiError(
+        409,
+        "PROVIDER_LOCKED",
+        "클라우드 제공자는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
+      );
   }
-  const { deploymentMode: _mode, ...rest } = input;
+  const { deploymentMode: _mode, cloudProvider: _provider, ...rest } = input;
   if (Object.keys(rest).length === 0) return getProject(ownerId, id);
   const values: unknown[] = [id, ownerId];
   const sets: string[] = [];

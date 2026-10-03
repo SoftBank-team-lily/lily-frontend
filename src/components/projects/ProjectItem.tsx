@@ -232,6 +232,9 @@ export function ProjectItem({
         · {project.deploymentMode === "ONPREM_ONLY" && (
           <>{t("온프레미스 전용")} · </>
         )}
+        {project.deploymentMode !== "ONPREM_ONLY" && project.cloudProvider === "GCP" && (
+          <>GCP · </>
+        )}
         {project.movedFromCloud && <>{t("클라우드 주소 그대로 ·")} </>}
         {project.databaseLocation && (
           <>{t(locationLabels[project.databaseLocation])} · </>

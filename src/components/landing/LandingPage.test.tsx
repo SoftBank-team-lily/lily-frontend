@@ -138,6 +138,7 @@ describe("배포 화면", () => {
       env: { VITE_API_URL: "https://api.example.com" },
       database: "mysql",
       deploymentMode: "HYBRID",
+      cloudProvider: "AWS",
       generateEnv: [],
       reuseEnv: [],
     });

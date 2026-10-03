@@ -84,6 +84,8 @@ export type DeploySettings = {
   importDatabase?: boolean;
   /** HYBRID(기본) 또는 ONPREM_ONLY */
   deploymentMode?: "HYBRID" | "ONPREM_ONLY";
+  /** 하이브리드의 클라우드. 비우면 AWS */
+  cloudProvider?: "AWS" | "GCP";
 };
 
 export type RunDeps = {
@@ -379,6 +381,11 @@ export function buildSettings(settings: DeploySettings | undefined) {
       ? { database: settings.database === "none" ? "" : settings.database }
       : {}),
     ...(settings.deploymentMode ? { deploymentMode: settings.deploymentMode } : {}),
+    ...(settings.deploymentMode === "ONPREM_ONLY"
+      ? {}
+      : settings.cloudProvider
+        ? { cloudProvider: settings.cloudProvider }
+        : {}),
     // 온프레미스 전용은 DB 를 내 PC 에만 둔다. RDS 터널과 데이터 옮기기는 보내지 않는다
     ...(settings.deploymentMode === "ONPREM_ONLY"
       ? settings.database && settings.database !== "none"

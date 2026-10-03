@@ -13,6 +13,8 @@ export type DeployTarget = "cloud" | "onprem";
  * ONPREM_ONLY: DB 와 요청 모두 내 PC. 버스팅·거점 전환이 없다.
  */
 export type DeploymentMode = "HYBRID" | "ONPREM_ONLY";
+/** 하이브리드의 클라우드. 온프레미스 전용은 AWS 로 둔다 (클라우드가 없다). 만든 뒤에는 바꾸지 않는다 */
+export type CloudProvider = "AWS" | "GCP";
 /** 앱 DB. none: DB 없이 배포 */
 export type DatabaseChoice = "postgres" | "mysql" | "none";
 /**
@@ -33,6 +35,8 @@ export type DeploySettings = {
   databaseLocation?: DatabaseLocation;
   /** 등록할 때만 정한다. 비우면 HYBRID */
   deploymentMode?: DeploymentMode;
+  /** 하이브리드의 클라우드. 등록할 때 선택 전략이 정한다. 기본 전략은 이 값(사용자 선택)이고, 비우면 AWS */
+  cloudProvider?: CloudProvider;
   /** databaseLocation 이 external 일 때 DB 주소 (비밀번호 포함, 돌려주지 않는다) */
   databaseUrl?: string;
   /** 서버가 랜덤 값을 만들어 넣을 환경변수 (JWT 서명 키 같은 앱 내부 비밀값) */
@@ -172,6 +176,8 @@ export type Project = {
   target: DeployTarget;
   /** 만든 뒤에는 바꾸지 않는다. 이 필드 전의 프로젝트는 HYBRID */
   deploymentMode: DeploymentMode;
+  /** 만든 뒤에는 바꾸지 않는다. 이 필드 전의 프로젝트는 AWS */
+  cloudProvider: CloudProvider;
   /** 앱이 있는 하위 폴더. 레포 루트면 "" */
   rootDir: string;
   /** 배포 설정. null 이면 builder 가 레포를 보고 정한다 */

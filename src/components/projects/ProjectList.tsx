@@ -9,6 +9,7 @@ import {
   ProjectError,
 } from "@/lib/projects/client";
 import type {
+  CloudProvider,
   Detection,
   DeploymentMode,
   DeployTarget,
@@ -46,6 +47,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<DeploymentMode>("HYBRID");
+  const [provider, setProvider] = useState<CloudProvider>("AWS");
   const [target, setTarget] = useState<DeployTarget>("cloud");
   /** 등록 폼. 처음에는 이미 올린 프로젝트만 보이고, 새 프로젝트를 누르면 연다 */
   const [creating, setCreating] = useState(false);
@@ -125,6 +127,7 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
       repo: String(data.get("repo")),
       target: place,
       deploymentMode: mode,
+      ...(mode === "ONPREM_ONLY" ? {} : { cloudProvider: provider }),
       ...settings,
       ...(String(data.get("name") ?? "").trim()
         ? { name: String(data.get("name")).trim() }
@@ -250,6 +253,8 @@ export function ProjectList({ initialPage }: { initialPage: ProjectPage }) {
                   setMode(next);
                   if (next === "ONPREM_ONLY") setTarget("onprem");
                 }}
+                provider={provider}
+                onProviderChange={setProvider}
               />
               {place === "onprem" && <AgentPanel onChange={setAgent} />}
               <Button type="submit" variant="ghost" disabled={waitingAgent}>

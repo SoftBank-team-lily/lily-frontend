@@ -87,13 +87,14 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         database_location: DatabaseLocation | null;
         database_url: string | null;
         deployment_mode: "HYBRID" | "ONPREM_ONLY";
+        cloud_provider: "AWS" | "GCP";
         app_name: string | null;
         move: "onprem" | null;
         move_database: "cloud" | "local" | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
           p.branch, p.root_dir, p.port, p.health_path, p.env, p.database,
-          p.database_location, p.database_url, p.deployment_mode, p.app_name, d.move, d.move_database FROM deployments d
+          p.database_location, p.database_url, p.deployment_mode, p.cloud_provider, p.app_name, d.move, d.move_database FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -119,6 +120,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
               healthPath: row.health_path,
               env: row.env,
               database: row.database,
+              cloudProvider: row.cloud_provider ?? "AWS",
               ...(row.move_database
                 ? { databaseLocation: row.move_database, importDatabase: row.move_database === "local" }
                 : {}),
@@ -139,6 +141,9 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           env: row.env,
           database: row.database,
           deploymentMode: row.deployment_mode ?? "HYBRID",
+          ...(row.deployment_mode === "ONPREM_ONLY"
+            ? {}
+            : { cloudProvider: row.cloud_provider === "GCP" ? "GCP" as const : "AWS" as const }),
           ...(row.deployment_mode === "ONPREM_ONLY"
             ? row.database && row.database !== "none"
               ? { databaseLocation: "local" as const }

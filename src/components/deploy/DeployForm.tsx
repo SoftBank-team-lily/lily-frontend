@@ -8,7 +8,7 @@ import { DeploySettingsFields } from "@/components/projects/DeploySettingsFields
 import { TargetChoice } from "@/components/projects/TargetChoice";
 import { AgentPanel } from "@/components/projects/AgentPanel";
 import type { AgentState } from "@/lib/agents/types";
-import type { DeploymentMode, DeployTarget } from "@/lib/projects/types";
+import type { CloudProvider, DeploymentMode, DeployTarget } from "@/lib/projects/types";
 
 type Props = {
   repo: string;
@@ -21,6 +21,8 @@ type Props = {
   onTargetChange?: (value: DeployTarget) => void;
   mode?: DeploymentMode;
   onModeChange?: (mode: DeploymentMode) => void;
+  provider?: CloudProvider;
+  onProviderChange?: (provider: CloudProvider) => void;
   /** 온프레미스 에이전트 연결 상태 */
   onAgentChange?: (agent: AgentState) => void;
   onNeedLogin?: () => void;
@@ -39,6 +41,8 @@ export function DeployForm({
   onTargetChange,
   mode = "HYBRID",
   onModeChange,
+  provider = "AWS",
+  onProviderChange,
   onAgentChange,
   onNeedLogin,
   waitingAgent,
@@ -74,6 +78,8 @@ export function DeployForm({
             onChange={onTargetChange}
             mode={mode}
             onModeChange={onModeChange}
+            provider={provider}
+            onProviderChange={onProviderChange}
           />
         )}
         {(target === "onprem" || mode === "ONPREM_ONLY") && onAgentChange && (
