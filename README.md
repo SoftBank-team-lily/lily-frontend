@@ -398,3 +398,9 @@ DB 가용성 확인을 대신하지 않습니다. DB 풀은 프로세스당 최�
 한국어(기본) · 영어 · 일본어를 상단 지구본 메뉴에서 선택할 수 있습니다. 프런트와 대시보드 사이에서도 설정을 유지합니다. 번역 추가와 연결 방식은 [언어 설정 문서](docs/i18n.md)를 참고하세요.
 
 GitHub App 설치와 수정 PR 서버 연결은 [GITHUB-APP.md](docs/GITHUB-APP.md)를 참고하세요. main의 기존 SQL 번호와 겹치던 GitHub/수정 PR SQL은 014~016으로 옮겼습니다. 기존 main DB에서는 `pnpm db:migrate`로 적용합니다.
+
+## 배포 환경 전환·AI 수정 진행
+
+로컬 SSH 터널 주소를 내부 Service 주소로 바꾸는 방법, 인증·대시보드·모니터링·Groq/JEV 설정은 [배포 환경 변수 전환 안내](docs/DEPLOY_ENV.md)에 정리했습니다. 실제 키나 비밀번호를 포함하지 않아 팀 공유에 사용할 수 있습니다.
+
+`feature/ai-fix-progress`에서는 배포 화면 아래의 AI 수정 진행 패널로 런타임 장애 접수·수정안 생성/검사·경로 확인·PR 생성·검토 대기를 표시합니다. `pnpm db:migrate`로 014~017 SQL을 적용하고 서비스 설정과 프로젝트의 AI 수정 허용을 맞추세요. 상세 구현 범위는 [AI_PROGRESS.md](docs/AI_PROGRESS.md)를 참고하세요.

@@ -124,3 +124,7 @@ projects.github_installation_id  bigint NULL
 3. 푸시 이벤트에 설치 id 분기를 넣어, 연결된 프로젝트만 배포 기록이 생기는지 확인한다.
 4. 계정 화면에서 연결된 프로젝트의 수동 웹훅 안내를 가린다.
 5. 비공개 저장소는 설치 토큰을 `lily-builder`에 넘기는 작업으로 따로 연다.
+
+## 수정 PR 기능 연결 시 추가 권한
+
+`feature/ai-fix-progress`에서 수정 PR까지 만들려면 Metadata 읽기 외에 **Contents: Read and write**, **Pull requests: Read and write**를 설정하고 기존 설치의 권한 변경도 승인해야 합니다. 프런트 `REMEDIATE_ENABLED`, builder/observer의 수정 기능과 사건 토큰, 프로젝트의 AI 수정 PR 허용을 함께 맞추세요. [배포 환경 변수 안내](DEPLOY_ENV.md)를 참고하세요.
