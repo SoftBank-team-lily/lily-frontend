@@ -21,13 +21,15 @@ import {
   burstStatus,
   cancelHome,
   clusterApps,
+  completeSchema,
+  schemaHistory,
   moveHome,
   runtimeOf,
   sendBurst,
   type BurstStatus,
 } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, BurstLive, ProjectBurst } from "./types";
+import type { AppRuntime, BurstLive, ProjectBurst, ProjectSchema } from "./types";
 import { databaseMoveOffer } from "./burst";
 
 type Row = {
@@ -356,16 +358,46 @@ export async function setRunning(ownerId: string, id: string, running: boolean) 
   return getProject(ownerId, id, true);
 }
 /**
- * 프로젝트를 지운다. 클라우드면 클러스터의 앱(Deployment·Service·Ingress·Secret)을 먼저 지우고,
- * database 면 앱 DB 도 DROP 한다. 배포 기록은 프로젝트와 같이 지워진다 (ON DELETE CASCADE).
- * 온프레미스는 플랫폼 기록만 지운다 (내 PC 의 앱은 에이전트를 멈추면 내려간다).
+ * 클라우드 앱의 스키마 이력과 pgroll 롤백 창. 아직 배포하지 않았거나 클러스터에서 확인하지 못했으면 schema 가 null.
+ * 온프레미스 앱은 내 PC 에서 Flyway 로 적용해서 여기서는 보지 않는다.
+ */
+export async function getSchema(
+  ownerId: string,
+  id: string,
+): Promise<{ schema: ProjectSchema | null }> {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name) return { schema: null };
+  const schema = await schemaHistory(row.app_name);
+  if (!schema?.message) return { schema };
+  return {
+    schema: {
+      ...schema,
+      message: schema.database ? "DB 이력을 읽지 못했어요." : "DB 를 쓰지 않는 앱이에요.",
+    },
+  };
+}
+/**
+ * pgroll 롤백 창을 바로 닫는다. 이후에는 이번 마이그레이션 전으로 스키마를 되돌릴 수 없다.
+ */
+export async function closeSchemaWindow(ownerId: string, id: string) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name)
+    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱만 스키마 롤백 창을 닫을 수 있어요.");
+  assertIdle(row);
+  await completeSchema(row.app_name);
+  return getSchema(ownerId, id);
+}
+/**
+ * 프로젝트를 지운다. 배포한 앱부터 지우고 플랫폼 기록을 지운다 (배포 기록은 ON DELETE CASCADE).
+ * 클라우드: 클러스터의 앱(Deployment·Service·Ingress·Secret). 온프레미스: 내 PC 의 컨테이너·이미지, 공개 주소,
+ * 클라우드 대기 배포 (lily-builder 가 에이전트에 보낸다. 에이전트가 꺼져 있으면 PC 의 컨테이너만 남는다).
+ * database 면 앱 DB 도 DROP 한다 (클라우드 RDS, 또는 내 PC 의 DB 컨테이너).
  */
 export async function deleteProject(ownerId: string, id: string, database: boolean) {
   const row = await projectRow(ownerId, id);
   assertIdle(row);
   let removed = false;
-  if (row.target === "cloud" && row.app_name)
-    removed = await appAction(row.app_name, "delete", database);
+  if (row.app_name) removed = await appAction(row.app_name, "delete", database);
   await db.query("DELETE FROM projects WHERE id=$1 AND owner_id=$2", [id, ownerId]);
   return { id, removed };
 }

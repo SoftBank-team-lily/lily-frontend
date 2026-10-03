@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime, BuildProgress, BurstLive } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive, ProjectSchema } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -227,15 +227,57 @@ export async function appAction(
     },
   );
   if (response.status === 404) return false;
-  if (response.status === 409)
+  if (response.status === 409) {
+    // 온프레미스 앱 삭제는 에이전트가 거절한 이유를 그대로 보인다 (예: 거점을 옮기는 중)
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new ApiError(
       409,
       "DEPLOYING",
-      "배포나 롤백이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요.",
+      action === "delete" && body?.message
+        ? `지우지 못했어요: ${body.message}`
+        : "배포나 롤백이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요.",
     );
+  }
   if (!response.ok) {
     console.error(`builder ${action} ${appName}: ${response.status} ${await response.text()}`);
     throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
   }
   return true;
+}
+
+/** 클라우드 앱의 스키마 이력과 pgroll 롤백 창. 클러스터에 앱이 없거나 확인하지 못했으면 null */
+export async function schemaHistory(appName: string): Promise<ProjectSchema | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/schema`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as ProjectSchema;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * pgroll 롤백 창을 바로 닫는다 (complete). 이후에는 스키마를 되돌릴 수 없다.
+ * @throws ApiError 열린 창이 없거나 배포·롤백 중(409), builder 가 실패
+ */
+export async function completeSchema(appName: string) {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/schema/complete`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (response.status === 409)
+    throw new ApiError(409, "NO_WINDOW", "열린 롤백 창이 없거나 배포·롤백이 진행 중이에요.");
+  if (!response.ok) {
+    console.error(`builder schema complete ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
 }
