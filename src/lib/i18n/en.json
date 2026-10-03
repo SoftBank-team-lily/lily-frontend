@@ -754,5 +754,9 @@
   "온프레미스 전용은 버스팅과 거점 전환을 쓰지 않아요. PC 가 꺼지면 서비스도 멈춥니다.": "On-premises only does not use bursting or home switching. The service stops when the PC is off.",
   "온프레미스 전용은 내 PC 에만 배포해요.": "On-premises only deploys to this PC.",
   "온프레미스 전용 DB 는 내 PC 에만 둘 수 있어요.": "An on-premises-only database can only live on this PC.",
-  "온프레미스 전용이에요. 데이터는 이 PC 에 있고, 버스팅과 거점 전환은 없어요. PC 가 꺼지면 서비스도 멈춥니다. TLS 는 Cloudflare 에서 끝나요.": "This project is on-premises only. Data stays on this PC, with no bursting or home switch. The service stops when the PC is off. TLS ends at Cloudflare."
+  "온프레미스 전용이에요. 데이터는 이 PC 에 있고, 버스팅과 거점 전환은 없어요. PC 가 꺼지면 서비스도 멈춥니다. TLS 는 Cloudflare 에서 끝나요.": "This project is on-premises only. Data stays on this PC, with no bursting or home switch. The service stops when the PC is off. TLS ends at Cloudflare.",
+  "배포 취소됨": "Deployment cancelled",
+  "배포 취소": "Cancel deployment",
+  "배포를 취소했어요. 트래픽은 이전 버전 그대로예요.": "Deployment cancelled. Traffic stays on the previous version.",
+  "내 PC 로 옮기기를 취소해서 클라우드에 그대로 두었어요.": "Move to my PC was cancelled, so the app stays in the cloud."
 }

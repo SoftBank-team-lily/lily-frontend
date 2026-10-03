@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { appAction, appAddress, pointAddressToCloud } from "@/lib/projects/apps";
+import { appAction, appAddress, cancelBuild, pointAddressToCloud } from "@/lib/projects/apps";
 import {
   AUTO_FIX_KEY,
   createDeployment,
@@ -312,6 +312,13 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         );
       }, MOVE_DRAIN_MS).unref();
       return { ok: true as const, url: onPremUrl };
+    },
+    async cancelled(deploymentId) {
+      const found = await db.query<{ status: string }>("SELECT status FROM deployments WHERE id=$1", [deploymentId]);
+      return found.rows[0]?.status === "cancelled";
+    },
+    async cancelBuild(buildId) {
+      await cancelBuild(buildId);
     },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다

@@ -32,6 +32,7 @@ const statusLabels: Record<DeploymentStatus, string> = {
   succeeded: "배포 완료",
   failed: "배포 실패",
   "rolled-back": "롤백 완료",
+  cancelled: "배포 취소됨",
 };
 const runtimeLabels: Record<AppState, string> = {
   running: "실행 중",
@@ -96,6 +97,17 @@ export function ProjectItem({
         ),
       ),
     );
+  /** 진행 중인 배포를 멈춘다. 결과(cancelled)는 목록 새로고침으로 보인다 */
+  const cancelDeploy = () =>
+    act(async () => {
+      if (!latest) return;
+      onUpdate(
+        await projectRequest<Project>(
+          `/api/projects/${project.id}/deployments/${latest.id}/cancel`,
+          { method: "POST" },
+        ),
+      );
+    });
   const remove = (dropDatabase: boolean) =>
     act(async () => {
       await projectRequest(
@@ -277,6 +289,14 @@ export function ProjectItem({
               {stepLine}
             </p>
           )}
+          <button
+            type="button"
+            onClick={cancelDeploy}
+            disabled={busy}
+            className="mt-2 text-caption text-mute hover:text-danger disabled:opacity-40"
+          >
+            {busy ? t("요청 중…") : t("배포 취소")}
+          </button>
         </div>
       )}
       {latest?.autoFixed && (
@@ -304,7 +324,9 @@ export function ProjectItem({
         />
       ) : (
         latest?.message &&
-        (latest.status === "failed" || latest.status === "rolled-back") && (
+        (latest.status === "failed" ||
+          latest.status === "rolled-back" ||
+          latest.status === "cancelled") && (
           <p className="mt-1 break-words text-caption text-mute">
             {t(latest.message)}
           </p>

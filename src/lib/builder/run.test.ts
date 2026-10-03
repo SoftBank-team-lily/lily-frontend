@@ -10,6 +10,7 @@ import {
   type RunResult,
   appName,
   BuilderRejected,
+  CANCELLED_MESSAGE,
   finalStatus,
   runOnce,
   type RunDeps,
@@ -29,6 +30,10 @@ type Fake = RunDeps & {
   results: Map<string, RunResult>;
   started: string[];
   events: string[];
+  /** builder 에 멈추라고 보낸 빌드 */
+  stopped: string[];
+  /** startBuild 가 끝나기 전에 사용자가 취소한 배포 */
+  cancelDuringStart: string | null;
   reject: boolean;
   down: boolean;
   failEvent: boolean;
@@ -47,6 +52,8 @@ function fake(): Fake {
     results: new Map(),
     started: [],
     events: [],
+    stopped: [],
+    cancelDuringStart: null,
     reject: false,
     down: false,
     failEvent: false,
@@ -89,6 +96,7 @@ function fake(): Fake {
       if (deps.reject) throw new BuilderRejected("400 bad repo");
       if (deps.down) throw new Error("connection refused");
       deps.started.push(`${repoUrl} ${app}${agentKey ? ` @${agentKey}` : ""}`);
+      if (deps.cancelDuringStart) deps.status.set(deps.cancelDuringStart, "cancelled");
       return `b${deps.started.length}`;
     },
     async buildStatus(buildId) {
@@ -96,11 +104,19 @@ function fake(): Fake {
         ? deps.builderStatus.get(buildId)!
         : { status: "BUILDING", url: null, message: null };
     },
+    async cancelled(deploymentId) {
+      return deps.status.get(deploymentId) === "cancelled";
+    },
+    async cancelBuild(buildId) {
+      deps.stopped.push(buildId);
+    },
     async event(deploymentId, status) {
       if (deps.failEvent) {
         deps.failEvent = false;
         throw new Error("db down");
       }
+      // recordEvent 전환 규칙: cancelled 에서는 바뀌지 않는다
+      if (deps.status.get(deploymentId) === "cancelled") throw new Error("INVALID_TRANSITION");
       deps.events.push(`${deploymentId} ${status}`);
       deps.status.set(deploymentId, status);
     },
@@ -211,6 +227,31 @@ describe("배포 실행기 한 주기", () => {
     expect(deps.events).toEqual([`${id} running`, `${id} succeeded`]);
   });
 
+  it("builder 가 CANCELLED 면 cancelled 와 취소 문구를 남기고 자동으로 고치지 않는다", async () => {
+    const id = deps.queue("a/b");
+    let fixed = 0;
+    deps.autoFix = async () => {
+      fixed++;
+      return true;
+    };
+    await runOnce(deps);
+    deps.builderStatus.set("b1", { status: "CANCELLED", url: null, message: "사용자가 취소했다" });
+    await runOnce(deps);
+    expect(deps.events).toEqual([`${id} running`, `${id} cancelled`]);
+    expect(deps.results.get(id)?.message).toBe(CANCELLED_MESSAGE);
+    expect(fixed).toBe(0);
+  });
+
+  it("builder 로 보내는 사이에 취소되면 막 시작한 빌드를 멈추고 running 을 기록하지 않는다", async () => {
+    const id = deps.queue("a/b");
+    deps.cancelDuringStart = id;
+    await runOnce(deps);
+    expect(deps.started).toHaveLength(1);
+    expect(deps.stopped).toEqual(["b1"]);
+    expect(deps.events).toEqual([]);
+    expect(deps.status.get(id)).toBe("cancelled");
+  });
+
   it("builder 에 기록이 없으면 실패로 본다", async () => {
     const id = deps.queue("a/b");
     await runOnce(deps);
@@ -319,6 +360,7 @@ describe("이름과 상태", () => {
     expect(finalStatus("SUCCEEDED")).toBe("succeeded");
     expect(finalStatus("FAILED")).toBe("failed");
     expect(finalStatus("ROLLED_BACK")).toBe("rolled-back");
+    expect(finalStatus("CANCELLED")).toBe("cancelled");
     expect(finalStatus("BUILDING")).toBeNull();
     expect(finalStatus(null)).toBe("failed");
   });
