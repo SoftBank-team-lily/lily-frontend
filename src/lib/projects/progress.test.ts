@@ -100,6 +100,14 @@ describe("지금 상태 한눈에", () => {
     expect(view.pc).toContain("쉬는 중");
     expect(view.cloud).toBe("Pod 2/2 준비됨");
     expect(view.database).toBe("클라우드(RDS)");
+    expect(
+      overview({
+        burst: burst({ home: "CLOUD" }),
+        cloudPods: { state: "running", ready: 1, replicas: 1 },
+        databaseLocation: "cloud",
+        cloudProvider: "GCP",
+      })!.database,
+    ).toBe("클라우드(Cloud SQL)");
     expect(view.warnings).toEqual([]);
     expect(view.recent).toEqual(["home: cloud", "park: home is cloud"]);
   });

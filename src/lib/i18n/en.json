@@ -807,5 +807,17 @@
   "장애 대비(읽기 사본·쓰기 보관)는 온프레미스 프로젝트만 정해요.": "Outage protection (read copies, write keeping) is only for on-premises projects.",
   "바꿀 값이 없어요.": "Nothing to change.",
   "장애 대비 설정 값이 맞지 않아요.": "The outage protection setting is invalid.",
-  "Cloudflare 에 설정을 저장하지 못했어요. 잠시 뒤 다시 바꿔 주세요.": "Could not save the setting to Cloudflare. Please try again shortly."
+  "Cloudflare 에 설정을 저장하지 못했어요. 잠시 뒤 다시 바꿔 주세요.": "Could not save the setting to Cloudflare. Please try again shortly.",
+  "HOME 과 {{cloud}}": "HOME and {{cloud}}",
+  "{{cloud}} · 클라우드": "{{cloud}} · Cloud",
+  "{{cloud}} 지표": "{{cloud}} metrics",
+  "{{cloud}} 100% (클라우드 앱)": "{{cloud}} 100% (cloud app)",
+  "{{cloud}} 100% · 거점이 {{cloud}} 라 버스팅은 쉬어요": "{{cloud}} 100% · Bursting paused while hosted on {{cloud}}",
+  "자동 · HOME 이 넘칠 때만 {{cloud}} 가 받아요": "Automatic · {{cloud}} handles overflow from HOME",
+  "수동 · HOME {{home}}% / {{cloud}} {{share}}%": "Manual · HOME {{home}}% / {{cloud}} {{share}}%",
+  "클라우드(Cloud SQL)": "Cloud (Cloud SQL)",
+  "이 앱의 DB 는 지금 클라우드(Cloud SQL)에 있어요.": "The app database is in Cloud (Cloud SQL).",
+  "DB 를 클라우드(Cloud SQL)로 옮기고 전환": "Move the DB to Cloud (Cloud SQL) and switch",
+  "DB 는 Cloud SQL 에 두고 전환": "Switch while keeping the DB in Cloud SQL",
+  "내 PC 앱이 터널로 Cloud SQL 을 써요.": "The app on your PC accesses Cloud SQL through a tunnel."
 }

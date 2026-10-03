@@ -70,6 +70,7 @@ export function BurstPanel({
   );
 
   const live = burst.live;
+  const gcp = project.cloudProvider === "GCP";
   const blocker = burstBlocker(burst);
   const usable = burst.agent === "connected" && !blocker;
   const summary = burstSummary(burst);
@@ -282,7 +283,9 @@ export function BurstPanel({
           {live?.databaseMode === "local" || live?.databaseMode === "cloud" ? (
             <p className="mt-1 text-mute">
               DB ·{" "}
-              {live.databaseMode === "local" ? t("내 PC") : t("클라우드(RDS)")}
+              {live.databaseMode === "local"
+                ? t("내 PC")
+                : t(gcp ? "클라우드(Cloud SQL)" : "클라우드(RDS)")}
             </p>
           ) : null}
           {live?.homeEvent && (
@@ -330,7 +333,11 @@ export function BurstPanel({
                   ? t(
                       "이 앱의 DB 는 지금 내 PC 에 있어요. DB 가 PC 에 남으면 PC 를 끌 때 앱도 멈춰요.",
                     )
-                  : t("이 앱의 DB 는 지금 클라우드(RDS)에 있어요.")}
+                  : t(
+                      gcp
+                        ? "이 앱의 DB 는 지금 클라우드(Cloud SQL)에 있어요."
+                        : "이 앱의 DB 는 지금 클라우드(RDS)에 있어요.",
+                    )}
               </p>
               <div className="mt-3 grid gap-2">
                 <Button
@@ -339,7 +346,11 @@ export function BurstPanel({
                   onClick={() => void move(confirmHome, true)}
                 >
                   {confirmHome === "cloud"
-                    ? t("DB 를 클라우드(RDS)로 옮기고 전환")
+                    ? t(
+                        gcp
+                          ? "DB 를 클라우드(Cloud SQL)로 옮기고 전환"
+                          : "DB 를 클라우드(RDS)로 옮기고 전환",
+                      )
                     : t("DB 를 내 PC 로 다시 옮기고 전환")}
                 </Button>
                 <p className="px-1 text-mute">
@@ -359,12 +370,16 @@ export function BurstPanel({
                 >
                   {confirmHome === "cloud"
                     ? t("DB 는 내 PC 에 두고 전환")
-                    : t("DB 는 RDS 에 두고 전환")}
+                    : t(gcp ? "DB 는 Cloud SQL 에 두고 전환" : "DB 는 RDS 에 두고 전환")}
                 </Button>
                 <p className="px-1 text-mute">
                   {confirmHome === "cloud"
                     ? t("PC 의 DB 를 터널로 써요. PC 가 꺼지면 앱도 멈춰요.")
-                    : t("내 PC 앱이 터널로 RDS 를 써요.")}
+                    : t(
+                        gcp
+                          ? "내 PC 앱이 터널로 Cloud SQL 을 써요."
+                          : "내 PC 앱이 터널로 RDS 를 써요.",
+                      )}
                 </p>
                 <Button
                   variant="ghost"
