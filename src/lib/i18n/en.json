@@ -185,7 +185,7 @@
   "중지": "Stop",
   "다시 시작": "Restart",
   "클러스터에서 앱을 지우고 프로젝트와 배포 기록도 지워요. 잠깐 멈추려면 '중지'를 쓰세요.": "Delete the app from the cluster, along with the project and deployment history. Use Stop to pause it instead.",
-  "프로젝트와 배포 기록을 지워요. 내 PC 에서 도는 앱은 에이전트를 멈추면 내려가요.": "Delete the project and deployment history. Stop the agent to stop the app on your PC.",
+  "내 PC 의 앱 컨테이너와 공개 주소, 클라우드 대기 Pod 를 지우고 프로젝트와 배포 기록도 지워요.": "Delete the app container on your PC, its public address and cloud standby pods, along with the project and deployment history.",
   "앱 DB 도 같이 지우기 (데이터를 되돌릴 수 없어요)": "Also delete the app database (cannot be undone)",
   "취소": "Cancel",
   "닫기": "Close",

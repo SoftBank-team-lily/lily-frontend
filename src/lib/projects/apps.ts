@@ -227,12 +227,17 @@ export async function appAction(
     },
   );
   if (response.status === 404) return false;
-  if (response.status === 409)
+  if (response.status === 409) {
+    // 온프레미스 앱 삭제는 에이전트가 거절한 이유를 그대로 보인다 (예: 거점을 옮기는 중)
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new ApiError(
       409,
       "DEPLOYING",
-      "배포나 롤백이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요.",
+      action === "delete" && body?.message
+        ? `지우지 못했어요: ${body.message}`
+        : "배포나 롤백이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요.",
     );
+  }
   if (!response.ok) {
     console.error(`builder ${action} ${appName}: ${response.status} ${await response.text()}`);
     throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
