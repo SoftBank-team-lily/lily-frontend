@@ -236,7 +236,6 @@ export type SchemaEntry = {
   description: string | null;
   state: "active" | "complete" | "baseline" | "applied" | "failed";
   startedAt: string | null;
-  completedAt: string | null;
 };
 /** 프로젝트 상세의 스키마 이력 패널. window 가 있으면 그 시각까지 스키마까지 롤백할 수 있다 */
 export type ProjectSchema = {

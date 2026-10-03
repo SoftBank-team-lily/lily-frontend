@@ -138,8 +138,7 @@ export function SchemaPanel({ projectId }: { projectId: string }) {
                   <tr>
                     <th className="py-1 pr-4 font-normal">{t("버전")}</th>
                     <th className="py-1 pr-4 font-normal">{t("상태")}</th>
-                    <th className="py-1 pr-4 font-normal">{t("적용 시각")}</th>
-                    <th className="py-1 font-normal">{t("확정 시각")}</th>
+                    <th className="py-1 font-normal">{t("적용 시각")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -158,8 +157,7 @@ export function SchemaPanel({ projectId }: { projectId: string }) {
                           {t(stateLabel[entry.state] ?? entry.state)}
                         </span>
                       </td>
-                      <td className="py-2 pr-4 tabular-nums text-ink">{when(entry.startedAt)}</td>
-                      <td className="py-2 tabular-nums text-ink">{when(entry.completedAt)}</td>
+                      <td className="py-2 tabular-nums text-ink">{when(entry.startedAt)}</td>
                     </tr>
                   ))}
                 </tbody>
