@@ -151,27 +151,30 @@ export async function writeQueueStatus(
 }
 
 /**
- * 엣지 쓰기 큐 등록 경로를 바꾼다. 빈 목록이면 새 POST 는 쌓지 않는다.
- * @throws ApiError builder 에서 큐가 꺼져 있음(409), 경로가 맞지 않음(400), Cloudflare 에 닿지 못함(502)
+ * 엣지 체크박스를 바꾼다. queue: 장애 중 쓰기 보관(모든 POST), snapshot: 장애 중 읽기 사본. 준 값만 바꾼다.
+ * @throws ApiError builder 에서 큐가 꺼져 있음(409), 값이 맞지 않음(400), Cloudflare 에 닿지 못함(502)
  */
-export async function sendWriteQueue(appName: string, paths: string[]): Promise<WriteQueue> {
+export async function sendWriteQueue(
+  appName: string,
+  change: { queue?: boolean; snapshot?: boolean },
+): Promise<WriteQueue> {
   const base = builderUrl();
   if (!base)
     throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
   const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/write-queue`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paths }),
+    body: JSON.stringify(change),
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
   if (response.status === 404)
     throw new ApiError(409, "QUEUE_OFF", "이 플랫폼에서는 엣지 쓰기 큐가 꺼져 있어요.");
   if (response.status === 400)
-    throw new ApiError(400, "INVALID_PATHS", "경로는 / 로 시작하고 ?, #, 공백이 없어야 해요.");
+    throw new ApiError(400, "INVALID_EDGE_OPTIONS", "장애 대비 설정 값이 맞지 않아요.");
   if (!response.ok) {
     console.error(`builder write-queue ${appName}: ${response.status} ${await response.text()}`);
-    throw new ApiError(502, "BUILDER_FAILED", "Cloudflare 에 경로를 저장하지 못했어요. 잠시 뒤 다시 저장해 주세요.");
+    throw new ApiError(502, "BUILDER_FAILED", "Cloudflare 에 설정을 저장하지 못했어요. 잠시 뒤 다시 바꿔 주세요.");
   }
   return (await response.json()) as WriteQueue;
 }

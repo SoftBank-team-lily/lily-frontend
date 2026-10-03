@@ -49,16 +49,23 @@ describe("프로젝트 입력 검증", async () => {
     expect(() => validate(homeSchema, { home: "edge" })).toThrow();
   });
 
-  it("쓰기 큐 경로는 / 로 시작하고 ?·#·공백이 없는 20개까지 받고, 빈 목록은 끄기로 받는다", async () => {
+  it("모니터 패널의 장애 대비 체크박스는 queue·snapshot 불리언 중 하나 이상을 받고, 빈 본문과 경로는 거절한다", async () => {
     const { writeQueueSchema } = await import("./schema");
-    expect(validate(writeQueueSchema, { paths: [" /posts ", "/comments/"] })).toEqual({
-      paths: ["/posts", "/comments/"],
+    expect(validate(writeQueueSchema, { queue: false })).toEqual({ queue: false });
+    expect(validate(writeQueueSchema, { snapshot: true, queue: true })).toEqual({ snapshot: true, queue: true });
+    expect(() => validate(writeQueueSchema, {})).toThrow();
+    expect(() => validate(writeQueueSchema, { queue: "yes" })).toThrow();
+    expect(() => validate(writeQueueSchema, { paths: ["/posts"] })).toThrow();
+  });
+
+  it("배포할 때 장애 대비 체크박스는 온프레미스 프로젝트만 받는다", () => {
+    expect(validate(projectSchema, { repo: "o/r", target: "onprem", edgeSnapshot: false, edgeQueue: true })).toMatchObject({
+      edgeSnapshot: false,
+      edgeQueue: true,
     });
-    expect(validate(writeQueueSchema, { paths: [] })).toEqual({ paths: [] });
-    expect(() => validate(writeQueueSchema, { paths: ["posts"] })).toThrow();
-    expect(() => validate(writeQueueSchema, { paths: ["/posts?draft=1"] })).toThrow();
-    expect(() => validate(writeQueueSchema, { paths: ["/my posts"] })).toThrow();
-    expect(() => validate(writeQueueSchema, { paths: Array(21).fill("/posts") })).toThrow();
-    expect(() => validate(writeQueueSchema, { paths: ["/posts"], extra: true })).toThrow();
+    expect(validate(projectSchema, { repo: "o/r", deploymentMode: "ONPREM_ONLY", edgeQueue: false })).toMatchObject({
+      edgeQueue: false,
+    });
+    expect(() => validate(projectSchema, { repo: "o/r", target: "cloud", edgeSnapshot: true })).toThrow();
   });
 });

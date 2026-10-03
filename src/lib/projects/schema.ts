@@ -78,9 +78,15 @@ export const projectSchema = z
     // 배포 전 확인 창: 서버가 랜덤 값을 만들 키, 같은 레포 다른 프로젝트 값을 가져올 키
     generateEnv: envKeysSchema.optional(),
     reuseEnv: envKeysSchema.optional(),
+    // 온프레미스 PC 장애 대비. 비우면 둘 다 켠다
+    edgeSnapshot: z.boolean().optional(),
+    edgeQueue: z.boolean().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if ((value.edgeSnapshot !== undefined || value.edgeQueue !== undefined)
+      && value.target !== "onprem" && value.deploymentMode !== "ONPREM_ONLY")
+      ctx.addIssue({ code: "custom", message: "장애 대비(읽기 사본·쓰기 보관)는 온프레미스 프로젝트만 정해요." });
     if (value.databaseLocation === "external" && !value.databaseUrl)
       ctx.addIssue({ code: "custom", message: "사용할 DB 주소를 넣어 주세요." });
     if (value.databaseUrl && value.databaseLocation !== "external")
@@ -164,18 +170,13 @@ export const burstSchema = z
   .strict();
 export type BurstInput = z.infer<typeof burstSchema>;
 /** 엣지 쓰기 큐에 넣을 POST 경로. / 로 시작하고 쿼리·공백이 없다 (lily-builder EdgeQueueController 와 같다). 빈 목록이면 끈다 */
+/** 모니터 패널의 엣지 체크박스. 준 값만 바꾼다 (queue: 장애 중 쓰기 보관, snapshot: 장애 중 읽기 사본) */
 export const writeQueueSchema = z
-  .object({
-    paths: z
-      .array(
-        z
-          .string()
-          .trim()
-          .regex(/^\/[^?#\s]{0,199}$/, "경로는 / 로 시작하고 ?, #, 공백이 없어야 해요."),
-      )
-      .max(20, "경로는 20개까지 등록할 수 있어요."),
-  })
-  .strict();
+  .object({ queue: z.boolean().optional(), snapshot: z.boolean().optional() })
+  .strict()
+  .refine((value) => value.queue !== undefined || value.snapshot !== undefined, {
+    message: "바꿀 값이 없어요.",
+  });
 export type WriteQueueInput = z.infer<typeof writeQueueSchema>;
 /** 공개 주소가 가리킬 곳 */
 /** migrateDatabase: 앱 DB 도 옮긴다 (클라우드로: 내 PC → RDS, 내 PC 로: RDS → 내 PC) */

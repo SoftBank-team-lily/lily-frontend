@@ -59,6 +59,9 @@ export type DeployChoice = {
   env: Record<string, string>;
   generateEnv: string[];
   reuseEnv: string[];
+  /** 온프레미스만. PC 장애 때 읽기 사본(Cache API)·쓰기 보관(DO). 기본으로 둘 다 켠다 */
+  edgeSnapshot?: boolean;
+  edgeQueue?: boolean;
 };
 
 type Field = { manual: boolean; value: string; reuse: boolean };
@@ -142,6 +145,9 @@ export function DeployCheckDialog({
   const [location, setLocation] = useState<DatabaseLocation>("local");
   const [databaseUrl, setDatabaseUrl] = useState("");
   const only = deploymentMode === "ONPREM_ONLY";
+  const onprem = only || target === "onprem";
+  const [edgeSnapshot, setEdgeSnapshot] = useState(true);
+  const [edgeQueue, setEdgeQueue] = useState(true);
   const asksLocation = !only && target === "onprem" && database !== "none";
   const engineOfUrl = databaseUrl.trim().startsWith("mysql:")
     ? "mysql"
@@ -335,6 +341,40 @@ export function DeployCheckDialog({
             </fieldset>
           )}
 
+          {onprem && (
+            <fieldset className="mt-5 flex flex-col gap-2">
+              <legend className="text-control">{t("PC 장애 대비")}</legend>
+              <label className="flex items-start gap-2 text-control">
+                <input
+                  type="checkbox"
+                  checked={edgeSnapshot}
+                  onChange={(event) => setEdgeSnapshot(event.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="text-ink">{t("장애 중 읽기 사본 (Cache API)")}</span>
+                  <span className="block text-caption text-mute">
+                    {t("PC 가 응답한 공개 페이지를 저장해 두었다가, PC 가 꺼지면 그 사본으로 보여 줘요.")}
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-control">
+                <input
+                  type="checkbox"
+                  checked={edgeQueue}
+                  onChange={(event) => setEdgeQueue(event.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="text-ink">{t("장애 중 쓰기 보관 (Durable Object)")}</span>
+                  <span className="block text-caption text-mute">
+                    {t("PC 가 꺼진 동안 온 POST 를 암호화해 쌓고 202 로 접수해요. PC 가 돌아오면 받은 순서대로 다시 보내요.")}
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+          )}
+
           {loading ? (
             <p className="mt-5 text-caption text-mute">
               {t("폴더를 다시 살펴보는 중…")}
@@ -378,6 +418,7 @@ export function DeployCheckDialog({
                   database,
                   first.apps.length > 1 ? rootDir : undefined,
                 ),
+                ...(onprem ? { edgeSnapshot, edgeQueue } : {}),
                 ...(only && database !== "none"
                   ? { databaseLocation: "local" as const }
                   : asksLocation

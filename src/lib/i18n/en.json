@@ -797,5 +797,15 @@
   "응답 없음 (기다림)": "No response (waiting)",
   "{{value0}} Cloudflare 오류 · PC 에 닿지 않음 (기다림)": "{{value0}} Cloudflare error · PC unreachable (waiting)",
   "{{value0}} 앱 오류 · {{value1}}번째 (10번이면 보내 봄)": "{{value0}} app error · #{{value1}} (sends after 10)",
-  "{{value0}} 응답 · PC 에 닿음": "{{value0}} response · PC reachable"
+  "{{value0}} 응답 · PC 에 닿음": "{{value0}} response · PC reachable",
+  "PC 장애 대비": "PC outage protection",
+  "장애 중 읽기 사본 (Cache API)": "Read copies during outages (Cache API)",
+  "장애 중 쓰기 보관 (Durable Object)": "Keep writes during outages (Durable Object)",
+  "PC 가 응답한 공개 페이지를 저장해 두었다가, PC 가 꺼지면 그 사본으로 보여 줘요.": "Public pages your PC served are saved and shown from that copy when the PC is off.",
+  "PC 가 꺼진 동안 온 POST 를 암호화해 쌓고 202 로 접수해요. PC 가 돌아오면 받은 순서대로 다시 보내요.": "While the PC is off, POST requests are encrypted, kept, and accepted with 202. They are sent again in order when the PC is back.",
+  "이 앱 공개 주소에는 아직 엣지 Worker 가 없어요. 설정을 바꿔도 요청이 Worker 를 거치지 않아요.": "This app's public address has no edge Worker yet. Changes will not affect requests until it does.",
+  "장애 대비(읽기 사본·쓰기 보관)는 온프레미스 프로젝트만 정해요.": "Outage protection (read copies, write keeping) is only for on-premises projects.",
+  "바꿀 값이 없어요.": "Nothing to change.",
+  "장애 대비 설정 값이 맞지 않아요.": "The outage protection setting is invalid.",
+  "Cloudflare 에 설정을 저장하지 못했어요. 잠시 뒤 다시 바꿔 주세요.": "Could not save the setting to Cloudflare. Please try again shortly."
 }
