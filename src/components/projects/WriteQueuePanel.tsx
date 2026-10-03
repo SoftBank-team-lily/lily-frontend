@@ -114,6 +114,18 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
               {t("이 앱 공개 주소에는 아직 엣지 Worker 가 없어요. 경로를 저장해도 요청이 큐를 거치지 않아요.")}
             </p>
           )}
+          <dl className="mt-3 grid gap-1 text-caption sm:grid-cols-[auto_1fr] sm:gap-x-4">
+            <dt className="text-mute">{t("PC 상태")}</dt>
+            <dd className={queue.downSince ? "text-warning" : "text-ink"}>
+              {queue.downSince
+                ? t("장애로 보고 새 POST 를 쌓는 중 · {{value0}}부터", { value0: when(queue.downSince) })
+                : t("정상 (POST 를 PC 로 바로 보냄)")}
+            </dd>
+            <dt className="text-mute">{t("마지막 PC 확인")}</dt>
+            <dd className="tabular-nums text-ink">
+              {queue.lastCheck ? `${when(queue.lastCheck.at)} · ${t(checkLabel(queue.lastCheck), checkValues(queue.lastCheck))}` : t("아직 없음")}
+            </dd>
+          </dl>
           <div className="mt-3 flex flex-col gap-2 text-control">
             <label htmlFor="write-queue-paths" className="text-caption text-mute">
               {t("POST 경로 (한 줄에 하나, 그 아래 경로도 포함)")}
@@ -190,6 +202,20 @@ export function WriteQueuePanel({ projectId }: { projectId: string }) {
       )}
     </section>
   );
+}
+
+type Check = NonNullable<WriteQueue["lastCheck"]>;
+
+/** 재전송 전 PC 확인 결과 문구. 5xx 면 기다리고, 앱 5xx 가 10번 이어지면 보내 본다 */
+function checkLabel(check: Check) {
+  if (check.status === null) return "응답 없음 (기다림)";
+  if (check.edge) return "{{value0}} Cloudflare 오류 · PC 에 닿지 않음 (기다림)";
+  if (check.status >= 500) return "{{value0}} 앱 오류 · {{value1}}번째 (10번이면 보내 봄)";
+  return "{{value0}} 응답 · PC 에 닿음";
+}
+
+function checkValues(check: Check) {
+  return { value0: check.status ?? "", value1: check.appErrors };
 }
 
 function when(iso: string) {
