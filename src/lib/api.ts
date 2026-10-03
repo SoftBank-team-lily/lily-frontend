@@ -1,5 +1,6 @@
 import "server-only";
 import { getUser } from "@/lib/auth/session";
+import { REQUIRE_EMAIL_VERIFICATION } from "@/lib/auth/policy";
 import { consumeLimit } from "@/lib/limits";
 
 export class ApiError extends Error {
@@ -64,7 +65,7 @@ export async function requireUser(request: Request, mutation = false) {
   if (mutation) assertOrigin(request);
   const user = await getUser(request.headers);
   if (!user) throw new ApiError(401, "UNAUTHENTICATED", "로그인이 필요해요.");
-  if (!user.emailVerified)
+  if (REQUIRE_EMAIL_VERIFICATION && !user.emailVerified)
     throw new ApiError(403, "UNVERIFIED", "이메일 인증이 필요해요.");
   return user;
 }
