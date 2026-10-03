@@ -50,11 +50,15 @@ export function TargetChoice({
   onModeChange,
   provider = "AWS",
   onProviderChange,
+  selection = "auto",
+  onSelectionChange,
 }: {
   value: DeployTarget;
   onChange: (value: DeployTarget) => void;
   mode?: DeploymentMode;
   onModeChange?: (mode: DeploymentMode) => void;
+  selection?: "auto" | "manual";
+  onSelectionChange?: (value: "auto" | "manual") => void;
   provider?: CloudProvider;
   onProviderChange?: (provider: CloudProvider) => void;
 }) {
@@ -85,7 +89,17 @@ export function TargetChoice({
           </div>
         </fieldset>
       )}
-      {onProviderChange && mode !== "ONPREM_ONLY" && (
+      {onSelectionChange && mode !== "ONPREM_ONLY" && <fieldset className="flex flex-col gap-2 text-control">
+        <legend>{t("클라우드 선택 방식")}</legend>
+        <div className="grid grid-cols-2 gap-3">
+          {(["auto", "manual"] as const).map((option) => <label key={option} className="flex cursor-pointer flex-col gap-1 rounded-xl border border-line p-4 has-[:checked]:border-ink focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent">
+            <input className="sr-only" type="radio" name="cloudSelection" value={option} checked={selection === option} onChange={() => onSelectionChange(option)} />
+            <span className="font-semibold">{t(option === "auto" ? "자동 · JEV" : "수동 선택")}</span>
+          </label>)}
+        </div>
+        {selection === "auto" && <p className="text-caption text-mute">{t("JEV가 저장소 적합성을 판단해 AWS 또는 GCP를 선택해요. 판단을 보류하면 수동으로 선택할 수 있어요.")}</p>}
+      </fieldset>}
+      {onProviderChange && (!onSelectionChange || selection === "manual") && mode !== "ONPREM_ONLY" && (
         <fieldset className="flex flex-col gap-2 text-control">
           <legend className="mb-2">{t("클라우드 제공자")}</legend>
           <div className="grid grid-cols-2 gap-3">

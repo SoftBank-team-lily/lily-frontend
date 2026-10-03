@@ -68,6 +68,7 @@ export const projectSchema = z
     target: z.enum(["cloud", "onprem"]).optional(),
     deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
     cloudProvider: z.enum(["AWS", "GCP"]).optional(),
+    cloudSelection: z.enum(["auto", "manual"]).optional(),
     ...settingsShape(),
     // 등록할 때만 받는다. 바꾸면 tenant DB 가 엔진마다 따로 생겨서 updateSchema 에는 없다
     database: databaseSchema.optional(),

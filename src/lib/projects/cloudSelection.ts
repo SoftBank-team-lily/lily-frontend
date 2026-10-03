@@ -15,7 +15,8 @@ export type CloudSelectionInput = {
 
 /**
  * 클라우드를 하나 고른다. 고른 값은 projects.cloud_provider 에 고정되고 배포는 그 값을 따른다.
- * AI 자동 선택은 이 인터페이스를 구현해 {@link strategies} 에서 수동보다 앞에 둔다.
+ * 신규 자동 선택은 server.ts 에서 cloudAutomatic.ts 의 비동기 builder 호출을 사용한다.
+ * 이 인터페이스는 수동·기존 전략 호환용이다.
  * applies 가 false 면 다음 전략으로 넘어간다.
  */
 export type CloudSelection = {

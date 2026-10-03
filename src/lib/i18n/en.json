@@ -783,5 +783,10 @@
   "이 플랫폼에서는 엣지 쓰기 큐가 꺼져 있어요.": "The edge write queue is turned off on this platform.",
   "경로는 / 로 시작하고 ?, #, 공백이 없어야 해요.": "Paths must start with / and contain no ?, #, or spaces.",
   "경로는 20개까지 등록할 수 있어요.": "You can register up to 20 paths.",
-  "Cloudflare 에 경로를 저장하지 못했어요. 잠시 뒤 다시 저장해 주세요.": "Could not save the paths to Cloudflare. Please try again shortly."
+  "Cloudflare 에 경로를 저장하지 못했어요. 잠시 뒤 다시 저장해 주세요.": "Could not save the paths to Cloudflare. Please try again shortly.",
+  "클라우드 선택 방식": "Cloud selection",
+  "자동 · JEV": "Automatic · JEV",
+  "수동 선택": "Manual selection",
+  "자동 선택": "Automatic selection",
+  "JEV가 저장소 적합성을 판단해 AWS 또는 GCP를 선택해요. 판단을 보류하면 수동으로 선택할 수 있어요.": "JEV evaluates repository suitability and selects AWS or GCP. If it cannot decide, you can select manually."
 }

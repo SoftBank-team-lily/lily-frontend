@@ -37,6 +37,7 @@ export type DeploySettings = {
   deploymentMode?: DeploymentMode;
   /** 하이브리드의 클라우드. 등록할 때 선택 전략이 정한다. 기본 전략은 이 값(사용자 선택)이고, 비우면 AWS */
   cloudProvider?: CloudProvider;
+  cloudSelection?: "auto" | "manual";
   /** databaseLocation 이 external 일 때 DB 주소 (비밀번호 포함, 돌려주지 않는다) */
   databaseUrl?: string;
   /** 서버가 랜덤 값을 만들어 넣을 환경변수 (JWT 서명 키 같은 앱 내부 비밀값) */
@@ -178,6 +179,8 @@ export type Project = {
   deploymentMode: DeploymentMode;
   /** 만든 뒤에는 바꾸지 않는다. 이 필드 전의 프로젝트는 AWS */
   cloudProvider: CloudProvider;
+  cloudSelection?: "auto" | "manual";
+  cloudSelectionReason?: string | null;
   /** 앱이 있는 하위 폴더. 레포 루트면 "" */
   rootDir: string;
   /** 배포 설정. null 이면 builder 가 레포를 보고 정한다 */

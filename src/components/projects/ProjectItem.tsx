@@ -232,6 +232,7 @@ export function ProjectItem({
         · {project.deploymentMode === "ONPREM_ONLY" && (
           <>{t("온프레미스 전용")} · </>
         )}
+        {project.deploymentMode !== "ONPREM_ONLY" && project.cloudSelection === "auto" && <p className="text-caption text-mute">{t("자동 선택")}: {project.cloudSelectionReason ?? project.cloudProvider}</p>}
         {project.deploymentMode !== "ONPREM_ONLY" && project.cloudProvider === "GCP" && (
           <>GCP · </>
         )}

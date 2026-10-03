@@ -35,6 +35,7 @@ import {
 import { getAgent } from "@/lib/agents/server";
 import type { AppRuntime, BurstLive, CloudProvider, ProjectBurst, ProjectSchema, WriteQueue } from "./types";
 import { databaseMoveOffer } from "./burst";
+import { chooseCloudAutomatically } from "./cloudAutomatic";
 import { selectCloud } from "./cloudSelection";
 
 type Row = {
@@ -44,6 +45,8 @@ type Row = {
   target: DeployTarget;
   deployment_mode: DeploymentMode;
   cloud_provider: CloudProvider;
+  cloud_selection: "auto" | "manual";
+  cloud_selection_reason: string | null;
   database_location: DatabaseLocation | null;
   burst_enabled: boolean;
   burst_cloud_percent: number;
@@ -68,7 +71,7 @@ type Row = {
   move: "onprem" | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.cloud_provider, p.database_location, p.database, p.app_name AS fixed_app_name,
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.cloud_provider, p.cloud_selection, p.cloud_selection_reason, p.database_location, p.database, p.app_name AS fixed_app_name,
   p.burst_enabled, p.burst_cloud_percent,
   p.root_dir, p.branch, p.port, p.health_path,
   ARRAY(SELECT jsonb_object_keys(p.env) ORDER BY 1) AS env_keys,
@@ -149,6 +152,8 @@ function project(
     target: row.target,
     deploymentMode: row.deployment_mode ?? "HYBRID",
     cloudProvider: row.cloud_provider === "GCP" ? "GCP" : "AWS",
+    cloudSelection: row.cloud_selection ?? "manual",
+    cloudSelectionReason: row.cloud_selection_reason,
     databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
     database: row.database ?? null,
     movedFromCloud: row.target === "onprem" && row.fixed_app_name !== null,
@@ -583,13 +588,7 @@ export async function createProject(
   settings: DeploySettings = {},
 ) {
   const mode: DeploymentMode = settings.deploymentMode === "ONPREM_ONLY" ? "ONPREM_ONLY" : "HYBRID";
-  const provider = selectCloud({
-    deploymentMode: mode,
-    requested: settings.cloudProvider,
-    repo,
-    rootDir: settings.rootDir,
-    database: settings.database,
-  });
+  const selection = settings.cloudSelection ?? (settings.cloudProvider ? "manual" : "auto");
   if (mode === "ONPREM_ONLY") target = "onprem";
   if (target === "onprem") {
     // 에이전트 하나는 공개 주소 하나, 앱 하나만 띄운다 (lily-on-premise)
@@ -604,12 +603,20 @@ export async function createProject(
         `온프레미스에는 프로젝트를 하나만 둘 수 있어요. 지금은 '${existing.rows[0].name}'이(가) 있어요.`,
       );
   }
+  const automatic = mode !== "ONPREM_ONLY" && selection === "auto" ? await chooseCloudAutomatically(repo, settings) : null;
+  const provider = automatic?.provider ?? selectCloud({
+    deploymentMode: mode,
+    requested: settings.cloudProvider,
+    repo,
+    rootDir: settings.rootDir,
+    database: settings.database,
+  });
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
     `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, cloud_provider, branch, root_dir, port, health_path, env, database,
-      database_location, database_url)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      database_location, database_url, cloud_selection, cloud_selection_reason)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
     [
       id,
       ownerId,
@@ -636,6 +643,8 @@ export async function createProject(
       mode !== "ONPREM_ONLY" && target === "onprem" && settings.databaseLocation === "external"
         ? (settings.databaseUrl ?? null)
         : null,
+      mode === "ONPREM_ONLY" ? "manual" : selection,
+      automatic?.reason ?? null,
     ],
   );
   return getProject(ownerId, id);
