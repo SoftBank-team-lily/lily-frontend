@@ -64,10 +64,15 @@ pnpm test:e2e
 - **상태**: 목록이 배포 중에는 4초마다 다시 읽는다. 완료되면 "앱 열기", 실패하면 이유 한 줄과 "다시 배포"
 - **DB 확인**: 등록할 때 lily-builder 가 감지한 DB(`POST /api/detect`)를 "감지된 DB" 드롭다운에 골라 두고, 사용자가 바꾼 뒤 생성한다. 감지하지 못하면 "없음". 등록한 뒤에는 바꿀 수 없다 (`projects.database`)
 - 포트·헬스 경로는 lily-builder 가 레포를 보고 정한다. DB 를 고르기 전에 등록한 프로젝트는 `BUILDER_DATABASE=auto`
+- **AWS + GCP (멀티클라우드)**: 클라우드 선택을 "수동 선택", 거점을 "클라우드"로 두면 클라우드 제공자에 세 번째 카드가 나온다 (`projects.cloud_provider = MULTI`). 두 클러스터에 같이 띄우고 엣지 Worker 가 요청을 나눈다. DB 는 GCP Cloud SQL 하나이고 PostgreSQL 만 된다. 내 PC 프로젝트·자동 선택(JEV)에는 없다
+  - 프로젝트 상세의 "AWS + GCP 트래픽" 패널: 클라우드별 Pod 수와 GCP 로 보내는 비율 슬라이더. 놓을 때 `PUT /api/projects/{id}/traffic` → lily-builder `PUT /api/apps/{app}/traffic`. 30초 안에 모든 엣지에 반영
+  - 롤백·중지·다시 시작·삭제는 기존 버튼 그대로 (lily-builder 가 두 클라우드에 보낸다). 다른 클라우드로 옮기기와 클라우드 → 온프레미스 전환은 감춘다
+  - 세션을 메모리에 두는 앱은 맞지 않는다 (고정 세션 없음)
 
 | 테이블 | 내용 |
 |---|---|
 | `projects.target` | `cloud` / `onprem` |
+| `projects.cloud_provider` | `AWS` / `GCP` / `MULTI` (019-multi-cloud.sql). 만든 뒤에는 바꾸지 않는다 (클라우드 이전으로만 AWS ↔ GCP) |
 | `agents` | 사용자별 에이전트 key (토큰은 저장하지 않음) |
 | `builder_runs` | 배포 ↔ lily-builder 빌드, 결과 주소(`url`), 결과 한 줄(`message`) |
 
