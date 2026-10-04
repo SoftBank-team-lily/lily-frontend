@@ -474,3 +474,20 @@ async function cloudMoveCall(appName: string, path: string, body: object | undef
   }
   return cloudMove((await response.json()) as BuilderMove);
 }
+
+/** 옮긴 적 있는 앱마다 가장 최근 옮기기 기록 (앱 이름 → 기록). builder 가 없거나 응답이 없으면 null */
+export async function cloudMoves(): Promise<Map<string, CloudMove> | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/migrations`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return null;
+    const views = (await response.json()) as (BuilderMove & { appName: string })[];
+    return new Map(views.map((view) => [view.appName, cloudMove(view)]));
+  } catch {
+    return null;
+  }
+}
