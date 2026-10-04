@@ -914,5 +914,13 @@
   "Lily 클러스터에 배포해요. 나중에 내 PC 로 옮길 수도 있어요.": "Deploy to the Lily cluster. You can move it to your PC later.",
   "내 PC 에서 돌리다 요청이 넘치면 고른 클라우드가 받아요. 거점도 오갈 수 있어요.": "Runs on your PC, and the cloud you pick takes the overflow. You can also switch home between them.",
   "저장소를 분석해 AWS 또는 GCP를 자동으로 골라요. 특정 클라우드에 묶이지 않으면 AWS로 배포해요.": "The repository is analyzed to pick AWS or GCP automatically. If it is not tied to a specific cloud, it deploys to AWS.",
-  "웹이나 DB처럼 어느 쪽이든 되면 AWS로 배포해요.": "Anything that works on either cloud, such as a web app or database, deploys to AWS."
+  "웹이나 DB처럼 어느 쪽이든 되면 AWS로 배포해요.": "Anything that works on either cloud, such as a web app or database, deploys to AWS.",
+  "클라우드로 옮기기": "Move to cloud",
+  "내 PC 로 옮기기": "Move to my PC",
+  "내 PC (클라우드로 전환 시작 대기)": "My PC (waiting to start switch to cloud)",
+  "클라우드 (내 PC 로 전환 시작 대기)": "Cloud (waiting to start switch to my PC)",
+  "온프레미스 → 클라우드 전환 요청을 보냈어요": "Requested switch: on-premises → cloud",
+  "클라우드 → 온프레미스 전환 요청을 보냈어요": "Requested switch: cloud → on-premises",
+  "내 PC 에이전트가 요청을 받아 시작하면 여기에 단계와 진행률이 나와요.": "Steps and progress appear here once the agent on your PC starts.",
+  "에이전트가 아직 시작하지 않았어요. 내 PC 에이전트가 켜져 있는지 확인해 주세요.": "The agent hasn't started yet. Check that the agent on your PC is running."
 }
