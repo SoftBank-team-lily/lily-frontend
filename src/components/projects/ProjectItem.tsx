@@ -69,8 +69,9 @@ export function ProjectItem({
   /** 내 PC 로 옮기기 창 */
   const [moving, setMoving] = useState(false);
   const movingNow = deploying && latest?.move === "onprem";
+  // 멀티클라우드(AWS + GCP)는 내 PC 로 옮기지 않는다 (builder 가 내 PC 배포에서 거절한다)
   const canMove =
-    project.target === "cloud" && latest?.status === "succeeded" && !deploying;
+    project.target === "cloud" && latest?.status === "succeeded" && !deploying && project.cloudProvider !== "MULTI";
   /** 다른 클라우드로 옮기기 창 (AWS ↔ GCP) */
   const [cloudMoving, setCloudMoving] = useState(false);
   // 멀티클라우드(AWS + GCP)는 이미 두 클라우드에 떠 있어 옮기지 않는다
