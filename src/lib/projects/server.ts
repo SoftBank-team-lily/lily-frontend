@@ -26,6 +26,7 @@ import {
   cancelHome,
   clusterApps,
   cloudMoveAction,
+  cloudMoves,
   cloudMoveStatus,
   completeSchema,
   startCloudMoveOnBuilder,
@@ -217,6 +218,7 @@ export async function listProjects(
   );
   const rows = result.rows.slice(0, limit);
   await ensureWebhookSecrets(rows);
+  await syncCloudMoves(ownerId, rows);
   const [apps, bursts] = await Promise.all([
     rows.some((row) => row.app_name) ? clusterApps() : null,
     burstsOf(rows),
@@ -244,6 +246,7 @@ export async function getProject(
   withRuntime = false,
 ): Promise<Project> {
   const row = await projectRow(ownerId, id);
+  await syncCloudMoves(ownerId, [row]);
   return project(
     row,
     withRuntime && row.app_name ? await clusterApps() : null,
@@ -584,14 +587,35 @@ export async function finishCloudMove(ownerId: string, id: string, action: "roll
 
 /** builder 가 옮기기를 마쳤거나 되돌렸으면 프로젝트 클라우드를 따라 바꾼다. 일반 수정은 여전히 클라우드를 잠근다 */
 async function syncCloudProvider(ownerId: string, id: string, current: CloudProvider, move: CloudMove) {
-  const settled =
-    move.state === "HOLD" || move.state === "FINALIZED"
-      ? move.to
-      : move.state === "ROLLED_BACK"
-        ? move.from
-        : null;
+  const settled = settledCloud(move);
   if (!settled || settled === current) return;
   await db.query("UPDATE projects SET cloud_provider=$3 WHERE id=$1 AND owner_id=$2", [id, ownerId, settled]);
+}
+/** 옮기기가 끝났으면 앱이 있는 클라우드. 진행 중이거나 실패(원본 그대로)면 null */
+function settledCloud(move: CloudMove): CloudProvider | null {
+  return move.state === "HOLD" || move.state === "FINALIZED"
+    ? move.to
+    : move.state === "ROLLED_BACK"
+      ? move.from
+      : null;
+}
+/**
+ * 프로젝트를 읽을 때 builder 의 옮기기 결과로 프로젝트 클라우드를 맞춘다. 되돌리기처럼 뒤에서 끝난 결과도
+ * 패널을 열지 않고 반영한다. 멀티클라우드 프로젝트는 옮기지 않으므로 건드리지 않는다. builder 가 없으면 그대로 둔다
+ */
+async function syncCloudMoves(ownerId: string, rows: Row[]) {
+  if (!rows.some((row) => row.app_name && row.deployment_mode !== "ONPREM_ONLY" && row.cloud_provider !== "MULTI"))
+    return;
+  const moves = await cloudMoves();
+  if (!moves) return;
+  for (const row of rows) {
+    const move = row.app_name ? moves.get(row.app_name) : undefined;
+    if (!move || row.cloud_provider === "MULTI") continue;
+    const settled = settledCloud(move);
+    if (!settled || settled === (row.cloud_provider ?? "AWS")) continue;
+    await db.query("UPDATE projects SET cloud_provider=$3 WHERE id=$1 AND owner_id=$2", [row.id, ownerId, settled]);
+    row.cloud_provider = settled;
+  }
 }
 /** 에이전트의 앱 이름 규칙 (lily-on-premise DeployJob). 클라우드 앱 이름이 이보다 길면 내 PC 로 옮길 수 없다 */
 const AGENT_APP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
