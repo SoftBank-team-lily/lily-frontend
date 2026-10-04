@@ -552,6 +552,8 @@ export async function startCloudMove(ownerId: string, id: string, to: CloudProvi
       healthPath: row.health_path ?? undefined,
       env: env.rows[0]?.env ?? undefined,
       database: row.database ?? undefined,
+      // 내 PC 앱은 DB 위치도 보낸다. DB 를 옮기면 builder 가 이 요청으로 내 PC 에 다시 배포한다
+      databaseLocation: hybrid ? row.database_location ?? undefined : undefined,
       deploymentMode: "HYBRID",
       cloudProvider: to,
     }),
