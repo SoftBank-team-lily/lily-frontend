@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useRef, useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth/client";
 import { authError } from "@/lib/auth/errors";
@@ -7,6 +9,7 @@ import { AuthField } from "./AuthField";
 import { Button } from "@/components/ui/Button";
 
 export function PasswordForm() {
+  const { t } = useI18n();
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -54,7 +57,7 @@ export function PasswordForm() {
         <AuthField
           id="current-password"
           name="current-password"
-          label="현재 비밀번호"
+          label={t("현재 비밀번호")}
           type="password"
           required
           maxLength={128}
@@ -63,7 +66,7 @@ export function PasswordForm() {
         <AuthField
           id="new-password"
           name="new-password"
-          label="새 비밀번호 (12~128자)"
+          label={t("새 비밀번호 (12~128자)")}
           type="password"
           required
           minLength={12}
@@ -73,21 +76,21 @@ export function PasswordForm() {
         <AuthField
           id="confirm-password"
           name="confirm-password"
-          label="새 비밀번호 확인"
+          label={t("새 비밀번호 확인")}
           type="password"
           required
           maxLength={128}
           autoComplete="new-password"
         />
         <Button type="submit" variant="ghost">
-          {busy ? "변경 중…" : "비밀번호 변경"}
+          {busy ? t("변경 중…") : t("비밀번호 변경")}
         </Button>
       </fieldset>
       <p role="alert" className="text-caption text-danger">
-        {error}
+        {t(error)}
       </p>
       <p role="status" className="text-note text-mute">
-        {message}
+        {t(message)}
       </p>
     </form>
   );

@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/lib/i18n/provider";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { SegmentedProgress } from "@/components/ui/SegmentedProgress";
@@ -27,6 +30,7 @@ export function DeployStatus({
   resetLabel = "다시 배포하기",
   actions,
 }: Props) {
+  const { t } = useI18n();
   return (
     <div aria-live="polite" className="mt-6 w-full max-w-lg text-left">
       <SegmentedProgress
@@ -35,7 +39,7 @@ export function DeployStatus({
         failedIndex={failedIndex}
       />
       <div className="mt-3 flex justify-between gap-3 text-control">
-        <span>{stage}</span>
+        <span>{t(stage)}</span>
         <span className="whitespace-nowrap text-mute">
           {step} / {fractions.length}
         </span>
@@ -45,7 +49,7 @@ export function DeployStatus({
         <div className="mt-3.5 flex flex-wrap gap-2 max-[641px]:flex-col">
           {finished && (
             <Button variant="ghost" disabled={resetDisabled} onClick={onReset}>
-              {resetLabel}
+              {t(resetLabel)}
             </Button>
           )}
           {actions}

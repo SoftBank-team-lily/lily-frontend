@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/lib/i18n/provider";
 import type { FormEventHandler, Ref } from "react";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
@@ -5,7 +8,7 @@ import { DeploySettingsFields } from "@/components/projects/DeploySettingsFields
 import { TargetChoice } from "@/components/projects/TargetChoice";
 import { AgentPanel } from "@/components/projects/AgentPanel";
 import type { AgentState } from "@/lib/agents/types";
-import type { DeployTarget } from "@/lib/projects/types";
+import type { CloudProvider, DeploymentMode, DeployTarget } from "@/lib/projects/types";
 
 type Props = {
   repo: string;
@@ -16,6 +19,12 @@ type Props = {
   onSubmit?: FormEventHandler<HTMLFormElement>;
   target?: DeployTarget;
   onTargetChange?: (value: DeployTarget) => void;
+  mode?: DeploymentMode;
+  onModeChange?: (mode: DeploymentMode) => void;
+  selection?: "auto" | "manual";
+  onSelectionChange?: (value: "auto" | "manual") => void;
+  provider?: CloudProvider;
+  onProviderChange?: (provider: CloudProvider) => void;
   /** 온프레미스 에이전트 연결 상태 */
   onAgentChange?: (agent: AgentState) => void;
   onNeedLogin?: () => void;
@@ -32,10 +41,17 @@ export function DeployForm({
   onSubmit,
   target = "cloud",
   onTargetChange,
+  mode = "HYBRID",
+  onModeChange,
+  selection = "auto",
+  onSelectionChange,
+  provider = "AWS",
+  onProviderChange,
   onAgentChange,
   onNeedLogin,
   waitingAgent,
 }: Props) {
+  const { t } = useI18n();
   return (
     <form
       noValidate
@@ -45,7 +61,7 @@ export function DeployForm({
       <fieldset disabled={disabled} className="flex flex-col gap-3">
         <div className="flex w-full gap-2 max-[641px]:flex-col">
           <label htmlFor="repo" className="sr-only">
-            GitHub 레포 주소
+            {t("GitHub 레포 주소")}
           </label>
           <TextField
             id="repo"
@@ -57,18 +73,27 @@ export function DeployForm({
             aria-describedby={error ? "repo-error" : undefined}
           />
           <Button type="submit" disabled={disabled || waitingAgent}>
-            배포 시작
+            {t("배포 시작")}
           </Button>
         </div>
         {onTargetChange && (
-          <TargetChoice value={target} onChange={onTargetChange} />
+          <TargetChoice
+            value={target}
+            onChange={onTargetChange}
+            mode={mode}
+            onModeChange={onModeChange}
+            selection={selection}
+            onSelectionChange={onSelectionChange}
+            provider={provider}
+            onProviderChange={onProviderChange}
+          />
         )}
-        {target === "onprem" && onAgentChange && (
+        {(target === "onprem" || mode === "ONPREM_ONLY") && onAgentChange && (
           <AgentPanel onChange={onAgentChange} onNeedLogin={onNeedLogin} />
         )}
         {waitingAgent && (
           <p className="text-caption text-mute">
-            온프레미스 에이전트가 연결되면 배포할 수 있어요.
+            {t("온프레미스 에이전트가 연결되면 배포할 수 있어요.")}
           </p>
         )}
         <DeploySettingsFields />
@@ -78,7 +103,7 @@ export function DeployForm({
         role="alert"
         className="min-h-[1.4em] text-caption text-danger"
       >
-        {error}
+        {t(error)}
       </div>
     </form>
   );

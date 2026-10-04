@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useState } from "react";
 import { projectRequest, ProjectError } from "@/lib/projects/client";
 import type { AgentState } from "@/lib/agents/types";
@@ -13,7 +15,8 @@ const DATABASES: { value: Database; label: string; description: string }[] = [
   {
     value: "cloud",
     label: "DB 는 클라우드(RDS)에 두기",
-    description: "내 PC 앱이 터널로 지금 쓰던 RDS 를 그대로 써요. 데이터 이동이 없어요.",
+    description:
+      "내 PC 앱이 터널로 지금 쓰던 RDS 를 그대로 써요. 데이터 이동이 없어요.",
   },
   {
     value: "local",
@@ -36,8 +39,10 @@ export function MovePanel({
   onMoved: (value: Project) => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const [agent, setAgent] = useState<AgentState | undefined>(undefined);
-  const hasDatabase = project.database === "postgres" || project.database === "mysql";
+  const hasDatabase =
+    project.database === "postgres" || project.database === "mysql";
   const [database, setDatabase] = useState<Database>("cloud");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -51,11 +56,18 @@ export function MovePanel({
         await projectRequest<Project>(`/api/projects/${project.id}/move`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: "onprem", database: hasDatabase ? database : null }),
+          body: JSON.stringify({
+            to: "onprem",
+            database: hasDatabase ? database : null,
+          }),
         }),
       );
     } catch (error) {
-      setError(error instanceof ProjectError ? error.message : "서버에 연결하지 못했어요.");
+      setError(
+        error instanceof ProjectError
+          ? error.message
+          : "서버에 연결하지 못했어요.",
+      );
     } finally {
       setBusy(false);
     }
@@ -64,18 +76,22 @@ export function MovePanel({
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-line p-4 text-caption">
       <div>
-        <p className="text-control font-semibold text-ink">클라우드 → 온프레미스 전환</p>
+        <p className="text-control font-semibold text-ink">
+          {t("클라우드 → 온프레미스 전환")}
+        </p>
         <p className="mt-1 text-mute">
-          주소는 그대로예요. 내 PC 에 배포가 끝나고 그 주소로 닿는 걸 확인한 뒤에만 클라우드를 내려요. 중간에
-          실패하면 클라우드가 계속 받아요.
+          {t(
+            "주소는 그대로예요. 내 PC 에 배포가 끝나고 그 주소로 닿는 걸 확인한 뒤에만 클라우드를 내려요. 중간에 실패하면 클라우드가 계속 받아요.",
+          )}
         </p>
       </div>
       <AgentPanel onChange={setAgent} />
       {hasDatabase && (
         <fieldset className="flex flex-col gap-2 text-control" disabled={busy}>
-          <legend className="mb-2">DB 위치</legend>
+          <legend className="mb-2">{t("DB 위치")}</legend>
           {DATABASES.map((option) => {
-            const unsupported = option.value === "local" && project.database !== "postgres";
+            const unsupported =
+              option.value === "local" && project.database !== "postgres";
             return (
               <label
                 key={option.value}
@@ -90,9 +106,11 @@ export function MovePanel({
                   onChange={() => setDatabase(option.value)}
                   className="sr-only"
                 />
-                <span className="font-semibold">{option.label}</span>
+                <span className="font-semibold">{t(option.label)}</span>
                 <span className="text-caption text-mute">
-                  {unsupported ? "PostgreSQL 앱만 옮길 수 있어요." : option.description}
+                  {unsupported
+                    ? t("PostgreSQL 앱만 옮길 수 있어요.")
+                    : option.description}
                 </span>
               </label>
             );
@@ -101,14 +119,18 @@ export function MovePanel({
       )}
       <div className="flex flex-wrap gap-2">
         <Button disabled={busy || !connected} onClick={() => void start()}>
-          {busy ? "요청 중…" : connected ? "전환 시작" : "에이전트 연결을 기다리는 중"}
+          {busy
+            ? t("요청 중…")
+            : connected
+              ? t("전환 시작")
+              : t("에이전트 연결을 기다리는 중")}
         </Button>
         <Button variant="ghost" disabled={busy} onClick={onCancel}>
-          취소
+          {t("취소")}
         </Button>
       </div>
       <p role="alert" className="text-danger">
-        {error}
+        {t(error)}
       </p>
     </div>
   );

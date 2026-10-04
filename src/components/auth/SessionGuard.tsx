@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth/client";
@@ -11,6 +13,7 @@ export function SessionGuard({
   userId: string;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   const { data, isPending, error } = authClient.useSession();
   const router = useRouter();
   const matches = isPending || data?.user.id === userId;
@@ -22,7 +25,7 @@ export function SessionGuard({
   if (!matches || error)
     return (
       <p role="status" className="text-note text-mute">
-        로그인 상태를 확인하고 있어요. 연결되지 않으면 새로고침해 주세요.
+        {t("로그인 상태를 확인하고 있어요. 연결되지 않으면 새로고침해 주세요.")}
       </p>
     );
   return children;

@@ -205,7 +205,11 @@ export type Overview = {
 };
 
 /** 온프레미스 앱의 지금 상태를 한눈에 (공개 주소가 어디서 받는지, 내 PC·클라우드에 뭐가 떠 있는지, 손볼 것) */
-export function overview(project: Pick<Project, "burst" | "cloudPods" | "databaseLocation">): Overview | null {
+export function overview(
+  project: Pick<Project, "burst" | "cloudPods" | "databaseLocation"> & {
+    cloudProvider?: Project["cloudProvider"];
+  },
+): Overview | null {
   const burst = project.burst;
   if (!burst) return null;
   const live = burst.live;
@@ -244,7 +248,9 @@ export function overview(project: Pick<Project, "burst" | "cloudPods" | "databas
     project.databaseLocation === "local"
       ? "내 PC"
       : project.databaseLocation === "cloud"
-        ? "클라우드(RDS)"
+        ? project.cloudProvider === "GCP"
+          ? "클라우드(Cloud SQL)"
+          : "클라우드(RDS)"
         : project.databaseLocation === "external"
           ? "기존 DB 서버"
           : "없음";

@@ -29,6 +29,7 @@ Artifact로 만든 랜딩 화면을 **Next.js + Tailwind CSS + three.js**로 똑
 - **후속 태스크**: T10~T12 꽃술 확대·대시보드 진입 연결 완료([DASHBOARD.md](./DASHBOARD.md)).
   T13~T18 로그인·회원가입·계정·사용자별 프로젝트 API·꽃 진입 권한 연결 구현 완료([AUTH.md](./AUTH.md), [API.md](./API.md)). 실제 배포 실행 엔진·대시보드 목적지 연동은 별도입니다.
   T19~T29 팀 피드백의 인증 정책·배포 설정·실행기 연결 계획 작성, 미구현([DEPLOY.md](./DEPLOY.md)).
+  F1~F8 AI 코드 수정 진행 표시 계획 작성, 미구현([AI_PROGRESS.md](./AI_PROGRESS.md)).
 
 - **병렬 진행**: T3 ∥ T4, T6·T7 ∥ T3~T5
 - **커밋 단위**: 태스크당 PR 하나(`develop` 대상)이고, PR 안의 커밋은 각 태스크의 "커밋" 항목을 따릅니다.

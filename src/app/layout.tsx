@@ -1,3 +1,5 @@
+import { LanguageProvider } from "@/lib/i18n/provider";
+import { getLocale, getTranslator } from "@/lib/i18n/server";
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans_KR } from "next/font/google";
 import "./globals.css";
@@ -16,19 +18,25 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export const metadata: Metadata = {
-  title: "Lily — 레포 하나로 피는 배포",
-  description: "Lily 배포 서비스",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslator();
+  return {
+    title: t("Lily — 레포 하나로 피는 배포"),
+    description: t("Lily 배포 서비스"),
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
   return (
-    <html lang="ko" className={plex.variable}>
-      <body>{children}</body>
+    <html lang={locale} className={plex.variable}>
+      <body>
+        <LanguageProvider locale={locale}>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

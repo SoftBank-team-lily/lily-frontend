@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { appAction, appAddress, pointAddressToCloud } from "@/lib/projects/apps";
+import { appAction, appAddress, cancelBuild, pointAddressToCloud } from "@/lib/projects/apps";
 import {
   AUTO_FIX_KEY,
   createDeployment,
@@ -86,13 +86,18 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         database: DatabaseChoice | null;
         database_location: DatabaseLocation | null;
         database_url: string | null;
+        deployment_mode: "HYBRID" | "ONPREM_ONLY";
+        cloud_provider: "AWS" | "GCP";
         app_name: string | null;
         move: "onprem" | null;
         move_database: "cloud" | "local" | null;
+        edge_snapshot: boolean | null;
+        edge_queue: boolean | null;
       }>(
         `SELECT d.id, d.project_id, p.repo, p.target, a.agent_key,
           p.branch, p.root_dir, p.port, p.health_path, p.env, p.database,
-          p.database_location, p.database_url, p.app_name, d.move, d.move_database FROM deployments d
+          p.database_location, p.database_url, p.deployment_mode, p.cloud_provider, p.app_name, d.move, d.move_database,
+          p.edge_snapshot, p.edge_queue FROM deployments d
         JOIN projects p ON p.id=d.project_id
         LEFT JOIN agents a ON a.owner_id=p.owner_id
         LEFT JOIN builder_runs r ON r.deployment_id=d.id
@@ -118,6 +123,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
               healthPath: row.health_path,
               env: row.env,
               database: row.database,
+              cloudProvider: row.cloud_provider ?? "AWS",
               ...(row.move_database
                 ? { databaseLocation: row.move_database, importDatabase: row.move_database === "local" }
                 : {}),
@@ -137,9 +143,19 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           healthPath: row.health_path,
           env: row.env,
           database: row.database,
-          ...(row.target === "onprem"
-            ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
-            : {}),
+          deploymentMode: row.deployment_mode ?? "HYBRID",
+          ...(row.deployment_mode === "ONPREM_ONLY"
+            ? {}
+            : { cloudProvider: row.cloud_provider === "GCP" ? "GCP" as const : "AWS" as const }),
+          ...(row.deployment_mode === "ONPREM_ONLY"
+            ? row.database && row.database !== "none"
+              ? { databaseLocation: "local" as const }
+              : {}
+            : row.target === "onprem"
+              ? { databaseLocation: row.database_location, databaseUrl: row.database_url }
+              : {}),
+          // 배포 화면의 엣지 체크박스 (온프레미스). null 이면 builder 에 보내지 않는다
+          ...(row.target === "onprem" ? { edgeSnapshot: row.edge_snapshot, edgeQueue: row.edge_queue } : {}),
         },
         };
       });
@@ -306,6 +322,13 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         );
       }, MOVE_DRAIN_MS).unref();
       return { ok: true as const, url: onPremUrl };
+    },
+    async cancelled(deploymentId) {
+      const found = await db.query<{ status: string }>("SELECT status FROM deployments WHERE id=$1", [deploymentId]);
+      return found.rows[0]?.status === "cancelled";
+    },
+    async cancelBuild(buildId) {
+      await cancelBuild(buildId);
     },
     async event(deploymentId, status) {
       // 이벤트 id 를 상태마다 고정해 같은 기록을 다시 보내도 한 번만 반영된다

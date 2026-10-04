@@ -1,10 +1,12 @@
+import { getTranslator } from "@/lib/i18n/server";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { RecoveryForm } from "@/components/auth/RecoveryForm";
-export default function VerifyEmailPage() {
+export default async function VerifyEmailPage() {
+  const t = await getTranslator();
   return (
     <AuthShell
-      title="이메일을 인증해 주세요."
-      description="인증 메일을 다시 보내드릴게요."
+      title={t("이메일을 인증해 주세요.")}
+      description={t("인증 메일을 다시 보내드릴게요.")}
     >
       <RecoveryForm mode="verify" />
     </AuthShell>

@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { LanguageProvider } from "@/lib/i18n/provider";
+import { render as renderComponent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LandingPage } from "@/components/landing/LandingPage";
 
@@ -17,3 +18,11 @@ describe("랜딩 페이지", () => {
     ).toBeInTheDocument();
   });
 });
+
+function render(ui: React.ReactNode) {
+  return renderComponent(ui, {
+    wrapper: ({ children }) => (
+      <LanguageProvider locale="ko">{children}</LanguageProvider>
+    ),
+  });
+}

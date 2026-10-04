@@ -1,5 +1,8 @@
 "use client";
 
+import { localeLink } from "@/lib/i18n/config";
+import { useI18n } from "@/lib/i18n/provider";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
@@ -15,6 +18,7 @@ export function AuthForm({
   mode: "login" | "signup";
   next: string;
 }) {
+  const { t, locale } = useI18n();
   const signup = mode === "signup";
   const router = useRouter();
   const lock = useRef(false);
@@ -53,7 +57,7 @@ export function AuthForm({
       if (signup) setSent(true);
       else {
         if (next === "/dashboard" || next.startsWith("/dashboard?")) {
-          window.location.assign(next);
+          window.location.assign(localeLink(next, locale));
         } else {
           router.replace(next);
           router.refresh();
@@ -70,14 +74,15 @@ export function AuthForm({
     return (
       <div className="space-y-5 text-note">
         <p role="status">
-          가입 요청을 받았어요. 이메일 인증을 완료한 뒤 로그인해 주세요. 이미
-          가입한 이메일이라면 로그인하거나 비밀번호를 재설정해 주세요.
+          {t(
+            "가입 요청을 받았어요. 이메일 인증을 완료한 뒤 로그인해 주세요. 이미 가입한 이메일이라면 로그인하거나 비밀번호를 재설정해 주세요.",
+          )}
         </p>
         <Link
           href={`/login?next=${encodeURIComponent(next)}`}
           className="text-ink underline"
         >
-          로그인으로
+          {t("로그인으로")}
         </Link>
       </div>
     );
@@ -89,7 +94,7 @@ export function AuthForm({
             <AuthField
               id="name"
               name="name"
-              label="표시 이름 (선택)"
+              label={t("표시 이름 (선택)")}
               maxLength={50}
               autoComplete="nickname"
             />
@@ -97,7 +102,7 @@ export function AuthForm({
           <AuthField
             id="email"
             name="email"
-            label="이메일"
+            label={t("이메일")}
             type="email"
             required
             maxLength={254}
@@ -106,7 +111,7 @@ export function AuthForm({
           <AuthField
             id="password"
             name="password"
-            label={signup ? "비밀번호 (12~128자)" : "비밀번호"}
+            label={signup ? t("비밀번호 (12~128자)") : t("비밀번호")}
             type="password"
             required
             minLength={signup ? 12 : undefined}
@@ -117,7 +122,7 @@ export function AuthForm({
             <AuthField
               id="confirm"
               name="confirm"
-              label="비밀번호 확인"
+              label={t("비밀번호 확인")}
               type="password"
               required
               autoComplete="new-password"
@@ -125,11 +130,11 @@ export function AuthForm({
             />
           )}
           <Button type="submit" className="h-12">
-            {busy ? "처리 중…" : signup ? "회원가입" : "로그인"}
+            {busy ? t("처리 중…") : signup ? t("회원가입") : t("로그인")}
           </Button>
         </fieldset>
         <p role="alert" className="min-h-[1.4em] text-caption text-danger">
-          {error}
+          {t(error)}
         </p>
       </form>
       <div className="mt-5 flex flex-wrap gap-5 text-caption text-mute">
@@ -137,16 +142,16 @@ export function AuthForm({
           href={`${signup ? "/login" : "/signup"}?next=${encodeURIComponent(next)}`}
           className="hover:text-ink"
         >
-          {signup ? "이미 계정이 있어요" : "계정 만들기"}
+          {signup ? t("이미 계정이 있어요") : t("계정 만들기")}
         </Link>
         {!signup && (
           <Link href="/forgot-password" className="hover:text-ink">
-            비밀번호를 잊었어요
+            {t("비밀번호를 잊었어요")}
           </Link>
         )}
         {!signup && (
           <Link href="/verify-email" className="hover:text-ink">
-            인증 메일 다시 받기
+            {t("인증 메일 다시 받기")}
           </Link>
         )}
       </div>

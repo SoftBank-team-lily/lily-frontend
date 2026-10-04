@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -7,6 +9,7 @@ import { authClient } from "@/lib/auth/client";
 import type { User } from "@/lib/auth/types";
 
 export function AuthNav({ user }: { user: User | null }) {
+  const { t } = useI18n();
   const router = useRouter();
   const { data, isPending } = authClient.useSession();
   const viewer = isPending ? user : (data?.user ?? null);
@@ -47,10 +50,10 @@ export function AuthNav({ user }: { user: User | null }) {
       {viewer ? (
         <>
           <Link href="/projects" className="hover:text-ink">
-            내 프로젝트
+            {t("내 프로젝트")}
           </Link>
           <Link href="/account" className="hover:text-ink">
-            내 계정
+            {t("내 계정")}
           </Link>
           <button
             type="button"
@@ -58,22 +61,22 @@ export function AuthNav({ user }: { user: User | null }) {
             disabled={busy}
             className="hover:text-ink disabled:opacity-40"
           >
-            {busy ? "로그아웃 중…" : "로그아웃"}
+            {busy ? t("로그아웃 중…") : t("로그아웃")}
           </button>
         </>
       ) : (
         <>
           <Link href="/login" className="hover:text-ink">
-            로그인
+            {t("로그인")}
           </Link>
           <Link href="/signup" className="text-ink">
-            회원가입
+            {t("회원가입")}
           </Link>
         </>
       )}
       {error && (
         <p role="alert" className="w-full text-right text-danger">
-          {error}
+          {t(error)}
         </p>
       )}
     </div>

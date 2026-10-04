@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth/client";
@@ -14,6 +16,7 @@ export function RecoveryForm({
   mode: "verify" | "forgot" | "reset";
   token?: string;
 }) {
+  const { t } = useI18n();
   const reset = mode === "reset";
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -78,7 +81,7 @@ export function RecoveryForm({
               <AuthField
                 id="password"
                 name="password"
-                label="새 비밀번호 (12~128자)"
+                label={t("새 비밀번호 (12~128자)")}
                 type="password"
                 required
                 minLength={12}
@@ -88,7 +91,7 @@ export function RecoveryForm({
               <AuthField
                 id="confirm"
                 name="confirm"
-                label="비밀번호 확인"
+                label={t("비밀번호 확인")}
                 type="password"
                 required
                 maxLength={128}
@@ -99,7 +102,7 @@ export function RecoveryForm({
             <AuthField
               id="email"
               name="email"
-              label="이메일"
+              label={t("이메일")}
               type="email"
               required
               maxLength={254}
@@ -107,21 +110,25 @@ export function RecoveryForm({
             />
           )}
           <Button type="submit" className="h-12">
-            {busy ? "처리 중…" : reset ? "비밀번호 재설정" : "메일 받기"}
+            {busy
+              ? t("처리 중…")
+              : reset
+                ? t("비밀번호 재설정")
+                : t("메일 받기")}
           </Button>
         </fieldset>
         <p role="alert" className="text-caption text-danger">
-          {error}
+          {t(error)}
         </p>
         <p role="status" className="text-note text-mute">
-          {message}
+          {t(message)}
         </p>
       </form>
       <Link
         href="/login"
         className="mt-6 inline-block text-caption text-ink underline"
       >
-        로그인으로
+        {t("로그인으로")}
       </Link>
     </>
   );

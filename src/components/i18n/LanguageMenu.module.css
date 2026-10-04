@@ -1,0 +1,61 @@
+.menu {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  color: inherit;
+  font-size: 12px;
+  z-index: 60;
+}
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 8px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 8px;
+}
+.trigger::-webkit-details-marker {
+  display: none;
+}
+.trigger:focus-visible,
+.options button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+.trigger:hover {
+  background: var(--color-field);
+}
+.code {
+  font-size: 10px;
+}
+.options {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 148px;
+  padding: 5px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 8px 25px var(--color-scrim);
+}
+.options button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.options button:hover,
+.options button[aria-pressed="true"] {
+  background: var(--color-field);
+}

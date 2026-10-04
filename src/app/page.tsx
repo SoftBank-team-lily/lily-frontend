@@ -1,3 +1,4 @@
+import { getTranslator } from "@/lib/i18n/server";
 import { AuthNav } from "@/components/auth/AuthNav";
 import { getUser } from "@/lib/auth/session";
 import { REQUIRE_EMAIL_VERIFICATION } from "@/lib/auth/policy";
@@ -15,17 +16,18 @@ export default async function Home({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const t = await getTranslator();
   const [user, query] = await Promise.all([getUser(), searchParams]);
   if (query.project) {
     const id = idSchema.safeParse(query.project);
     if (!id.success)
       return (
         <AuthShell
-          title="프로젝트를 열 수 없어요."
-          description="프로젝트 주소를 확인해 주세요."
+          title={t("프로젝트를 열 수 없어요.")}
+          description={t("프로젝트 주소를 확인해 주세요.")}
         >
           <Link href="/account" className="text-ink underline">
-            내 프로젝트로
+            {t("내 프로젝트로")}
           </Link>
         </AuthShell>
       );
@@ -34,7 +36,7 @@ export default async function Home({
     if (REQUIRE_EMAIL_VERIFICATION && !user.emailVerified)
       redirect("/verify-email");
     let entry: ProjectEntry | undefined;
-    let message = "프로젝트를 확인하지 못했어요.";
+    let message = t("프로젝트를 확인하지 못했어요.");
     try {
       entry = await getProjectEntry(user.id, id.data);
     } catch (error) {
@@ -44,12 +46,12 @@ export default async function Home({
     if (!entry) {
       return (
         <AuthShell
-          title="프로젝트를 열 수 없어요."
-          description={message}
+          title={t("프로젝트를 열 수 없어요.")}
+          description={t(message)}
           navigation={<AuthNav user={user} />}
         >
           <Link href="/account" className="text-ink underline">
-            내 프로젝트로
+            {t("내 프로젝트로")}
           </Link>
         </AuthShell>
       );
@@ -63,5 +65,13 @@ export default async function Home({
       />
     );
   }
-  return <HomeClient key={user?.id ?? "guest"} user={user} dashboardConnected={!!(process.env.DASHBOARD_ORIGIN || process.env.DASHBOARD_URL)} />;
+  return (
+    <HomeClient
+      key={user?.id ?? "guest"}
+      user={user}
+      dashboardConnected={
+        !!(process.env.DASHBOARD_ORIGIN || process.env.DASHBOARD_URL)
+      }
+    />
+  );
 }

@@ -1,5 +1,6 @@
+import { LanguageProvider } from "@/lib/i18n/provider";
 import { StrictMode } from "react";
-import { render } from "@testing-library/react";
+import { render as renderComponent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import FlowerCanvasClient from "./FlowerCanvasClient";
 
@@ -57,3 +58,11 @@ describe("꽃 캔버스", () => {
     expect(document.querySelector("#gl")).toBeNull();
   });
 });
+
+function render(ui: React.ReactNode) {
+  return renderComponent(ui, {
+    wrapper: ({ children }) => (
+      <LanguageProvider locale="ko">{children}</LanguageProvider>
+    ),
+  });
+}
