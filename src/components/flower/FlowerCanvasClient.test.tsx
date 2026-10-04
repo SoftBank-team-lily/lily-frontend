@@ -61,8 +61,9 @@ describe("꽃 캔버스", () => {
 
 function render(ui: React.ReactNode) {
   return renderComponent(ui, {
+    reactStrictMode: true,
     wrapper: ({ children }) => (
-      <LanguageProvider locale="ko">{children}</LanguageProvider>
+      <StrictMode><LanguageProvider locale="ko">{children}</LanguageProvider></StrictMode>
     ),
   });
 }

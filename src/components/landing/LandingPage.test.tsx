@@ -60,6 +60,8 @@ describe("배포 화면", () => {
     fetch = vi.fn((url: string, init?: RequestInit) => {
       if (url === "/api/projects?limit=100")
         return respond(200, { items: registered, nextCursor: null });
+      if (url === `/api/projects/${PROJECT}/fixes`)
+        return respond(200, { enabled: false, consent: false, githubApp: false, runs: [] });
       if (url === "/api/detect") return respond(200, { database: "postgres" });
       if (url === `/api/projects/${PROJECT}/deployments`)
         return respond(201, { id: "d2" });
@@ -138,12 +140,12 @@ describe("배포 화면", () => {
       env: { VITE_API_URL: "https://api.example.com" },
       database: "mysql",
       deploymentMode: "HYBRID",
-      cloudProvider: "AWS",
+      cloudSelection: "auto",
       generateEnv: [],
       reuseEnv: [],
     });
     expect(screen.getByText("배포 완료")).toBeInTheDocument();
-    expect(screen.getByRole("link")).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "next-js-1b62c0.apps.lilycloud.kr" })).toHaveAttribute(
       "href",
       "https://next-js-1b62c0.apps.lilycloud.kr",
     );
@@ -235,6 +237,8 @@ describe("배포 화면", () => {
     fetch.mockImplementation((url: string, init?: RequestInit) => {
       if (url === "/api/projects?limit=100")
         return respond(200, { items: [], nextCursor: null });
+      if (url === `/api/projects/${PROJECT}/fixes`)
+        return respond(200, { enabled: false, consent: false, githubApp: false, runs: [] });
       if (url === "/api/detect")
         return respond(200, {
           database: "postgres",
@@ -362,6 +366,8 @@ describe("배포 화면", () => {
         return respond(200, project("failed"));
       if (url === "/api/projects?limit=100")
         return respond(200, { items: registered, nextCursor: null });
+      if (url === `/api/projects/${PROJECT}/fixes`)
+        return respond(200, { enabled: false, consent: false, githubApp: false, runs: [] });
       if (url === "/api/detect") return respond(200, { database: "none" });
       if (url === `/api/projects/${PROJECT}/deployments`)
         return respond(201, { id: "d2" });

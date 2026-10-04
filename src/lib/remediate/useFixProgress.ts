@@ -28,6 +28,8 @@ export function useFixProgress(projectId?: string) {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
         });
         if (controller.signal.aborted) return;
+        if (!data || !Array.isArray(data.runs) || typeof data.enabled !== "boolean" || typeof data.consent !== "boolean" || typeof data.githubApp !== "boolean")
+          throw new Error("Invalid AI repair progress response");
         setSnapshot({ projectId: projectId!, data });
         const running = data.runs.some((run) => run.status === "running");
         if (running) delay = 3000;
