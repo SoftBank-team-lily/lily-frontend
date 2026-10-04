@@ -24,10 +24,13 @@ const STEPS: Record<string, string> = {
  */
 export function CloudMovePanel({
   project,
+  deploying,
   onUpdate,
   onClose,
 }: {
   project: Project;
+  /** 배포가 진행 중이면 옮기기를 시작하지 않는다 (서버도 막는다) */
+  deploying: boolean;
   onUpdate: (value: Project) => void;
   onClose: () => void;
 }) {
@@ -38,6 +41,7 @@ export function CloudMovePanel({
   const [discard, setDiscard] = useState(false);
   const target: CloudProvider = project.cloudProvider === "GCP" ? "AWS" : "GCP";
   const hasDatabase = project.database === "postgres" || project.database === "mysql";
+  const hybrid = project.target === "onprem";
 
   // 창이 열려 있는 동안 몇 초마다 본다. 옮기기가 끝나면 프로젝트(클라우드 표시)를 다시 받는다
   const previous = useRef<CloudMove["state"] | null>(null);
@@ -107,7 +111,15 @@ export function CloudMovePanel({
 
       {move === undefined && <p className="text-mute">{t("상태를 확인하는 중…")}</p>}
 
-      {running && (
+      {running && move.step === "ROLLBACK" && (
+        <p className="text-ink" aria-live="polite">
+          {t("{{from}} 로 되돌리는 중이에요. 주소가 바뀐 뒤 반영을 기다렸다가 {{to}} 쪽을 지워요.", {
+            from: move.from,
+            to: move.to,
+          })}
+        </p>
+      )}
+      {running && move.step !== "ROLLBACK" && (
         <ol className="space-y-1" aria-live="polite">
           {Object.entries(STEPS)
             .filter(([key]) => hasDatabase || (key !== "DATABASE" && key !== "COPY"))
@@ -159,21 +171,31 @@ export function CloudMovePanel({
           {t("지난 옮기기가 실패해서 원본으로 되돌렸어요.")} {move.message ?? ""}
         </p>
       )}
-      {move?.state === "FINALIZED" && (
+      {move?.state === "FINALIZED" && !move.hybrid && (
         <p className="text-mute">{t("{{to}} 로 옮기고 {{from}} 정리까지 끝났어요.", { to: move.to, from: move.from })}</p>
+      )}
+      {move?.state === "FINALIZED" && move.hybrid && (
+        <p className="text-mute">
+          {t("클라우드를 {{to}} 로 바꿨어요. 내 PC 로 다시 배포하면서 {{to}} 에 대기 Pod 를 만들어요.", { to: move.to })}
+        </p>
       )}
 
       {canStart && (
         <div className="space-y-2">
           <p className="text-mute">
-            {hasDatabase
+            {hybrid
+              ? t(
+                  "앱은 계속 내 PC 가 받아요. {{from}} 대기 Pod 를 지우고 내 PC 로 다시 배포해 {{to}} 에 대기 Pod 를 만들어요. 그동안 몇 분은 넘침과 PC 장애 때 클라우드 전환이 없어요. DB 를 클라우드(RDS 터널)에 둔 앱은 아직 옮기지 못해요.",
+                  { from: project.cloudProvider, to: target },
+                )
+              : hasDatabase
               ? t(
                   "DB 가 있어서 쓰기가 갈라지지 않게 원본을 먼저 내리고 DB 를 복사해요. 복사와 새 배포 동안 앱이 응답하지 않아요. PostgreSQL 만 옮겨요.",
                 )
               : t("DB 가 없어서 새 클라우드를 먼저 띄우고 주소를 바꿔요. 멈추는 시간이 없어요.")}
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={() => void send({ action: "start", to: target })}>
+            <Button disabled={busy || deploying} onClick={() => void send({ action: "start", to: target })}>
               {busy
                 ? t("요청 중…")
                 : t("{{from}} → {{to}} 옮기기 시작", { from: project.cloudProvider, to: target })}

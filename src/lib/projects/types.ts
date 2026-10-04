@@ -273,6 +273,8 @@ export type CloudMove = {
   state: "RUNNING" | "HOLD" | "FINALIZED" | "FAILED" | "ROLLED_BACK";
   step: string;
   downtimeMs: number | null;
+  /** 내 PC(하이브리드) 앱의 클라우드만 바꿨다. 내 PC 로 다시 배포하면서 새 클라우드에 대기 Pod 를 만든다 */
+  hybrid: boolean;
   startedAt: string;
   updatedAt: string;
   /** 실패 이유. 실패가 아니면 null */

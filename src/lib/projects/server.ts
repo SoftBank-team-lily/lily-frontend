@@ -496,8 +496,10 @@ export async function deleteProject(ownerId: string, id: string, database: boole
  */
 export async function startCloudMove(ownerId: string, id: string, to: CloudProvider) {
   const row = await projectRow(ownerId, id);
-  if (row.target !== "cloud" || row.deployment_mode === "ONPREM_ONLY")
-    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱만 다른 클라우드로 옮길 수 있어요.");
+  if (row.deployment_mode === "ONPREM_ONLY")
+    throw new ApiError(409, "ONPREM_ONLY", "온프레미스 전용 프로젝트는 클라우드를 쓰지 않아요.");
+  // 내 PC(하이브리드) 앱은 클라우드에 대기 Pod 만 있다. builder 가 옛 대기 배포를 지우면 내 PC 로 다시 배포한다
+  const hybrid = row.target === "onprem";
   assertIdle(row);
   if (row.status !== "succeeded" || !row.app_name)
     throw new ApiError(409, "NOT_DEPLOYED", "클라우드 배포가 끝난 앱만 옮길 수 있어요.");
@@ -523,13 +525,18 @@ export async function startCloudMove(ownerId: string, id: string, to: CloudProvi
     }),
   };
   const move = await startCloudMoveOnBuilder(row.app_name, body);
+  if (hybrid && move.state === "FINALIZED") {
+    await syncCloudProvider(ownerId, id, row.cloud_provider ?? "AWS", move);
+    // 다시 배포가 에이전트의 버스트·터널 대상을 새 클라우드로 바꾸고, 끝나면 에이전트가 새 클라우드에 대기 Pod 를 요청한다
+    await createDeployment(ownerId, id, `cloud-move-${move.id}`);
+  }
   return { move, project: await getProject(ownerId, id) };
 }
 
 /** 옮기기 상태. 끝났으면(HOLD·FINALIZED·ROLLED_BACK) 프로젝트 클라우드를 builder 기록에 맞춘다 */
 export async function getCloudMove(ownerId: string, id: string): Promise<{ move: CloudMove | null }> {
   const row = await projectRow(ownerId, id);
-  if (row.target !== "cloud" || !row.app_name) return { move: null };
+  if (!row.app_name || row.deployment_mode === "ONPREM_ONLY") return { move: null };
   const move = await cloudMoveStatus(row.app_name);
   if (move) await syncCloudProvider(ownerId, id, row.cloud_provider ?? "AWS", move);
   return { move };
