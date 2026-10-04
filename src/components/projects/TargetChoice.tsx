@@ -66,7 +66,7 @@ function CloudChoiceHint() {
           <span className="font-semibold text-ink">{t("클라우드 선택 기준")}</span>
           <span>{t("AWS 전용 라이브러리(S3, SQS 등)가 보이면 AWS를 골라요.")}</span>
           <span>{t("GCP 전용 라이브러리(BigQuery, Cloud Storage 등)가 보이면 GCP를 골라요.")}</span>
-          <span>{t("웹이나 DB처럼 어느 쪽이든 되면 준비된 쪽을 고르고, 근거가 없으면 직접 고르게 해요.")}</span>
+          <span>{t("웹이나 DB처럼 어느 쪽이든 되면 AWS로 배포해요.")}</span>
         </span>
       </span>
     </span>
@@ -156,7 +156,7 @@ export function TargetChoice({
             </div>
           ))}
         </div>
-        {selection === "auto" && <p className="text-caption text-mute">{t("JEV가 저장소 적합성을 판단해 AWS 또는 GCP를 선택해요. 판단을 보류하면 수동으로 선택할 수 있어요.")}</p>}
+        {selection === "auto" && <p className="text-caption text-mute">{t("저장소를 분석해 AWS 또는 GCP를 자동으로 골라요. 특정 클라우드에 묶이지 않으면 AWS로 배포해요.")}</p>}
       </fieldset>}
       {onProviderChange && (!onSelectionChange || selection === "manual") && mode !== "ONPREM_ONLY" && (
         <fieldset className="flex flex-col gap-2 text-control">
