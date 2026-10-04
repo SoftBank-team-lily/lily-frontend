@@ -70,6 +70,11 @@ const providers: { value: CloudProvider; label: string; description: string }[] 
     label: "GCP",
     description: "Lily 의 GCP 클러스터에 배포해요. DB 는 Cloud SQL 입니다.",
   },
+  {
+    value: "MULTI",
+    label: "AWS + GCP",
+    description: "두 클러스터에 같이 띄우고 요청을 나눠요. DB 는 Cloud SQL 하나이고 PostgreSQL 만 돼요. 클라우드 배포만 됩니다.",
+  },
 ];
 
 export function TargetChoice({
@@ -136,8 +141,8 @@ export function TargetChoice({
       {onProviderChange && (!onSelectionChange || selection === "manual") && mode !== "ONPREM_ONLY" && (
         <fieldset className="flex flex-col gap-2 text-control">
           <legend className="mb-2">{t("클라우드 제공자")}</legend>
-          <div className="grid grid-cols-2 gap-3">
-            {providers.map((option) => (
+          <div className={`grid grid-cols-2 gap-3 ${value === "cloud" ? "sm:grid-cols-3" : ""}`}>
+            {providers.filter((option) => option.value !== "MULTI" || value === "cloud").map((option) => (
               <label
                 key={option.value}
                 className="flex cursor-pointer flex-col gap-1 rounded-xl border border-line p-4 has-[:checked]:border-ink focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent"
@@ -171,7 +176,11 @@ export function TargetChoice({
               name="target"
               value={option.value}
               checked={value === option.value}
-              onChange={() => onChange(option.value)}
+              onChange={() => {
+                // AWS + GCP 는 클라우드 배포만. 내 PC 로 바꾸면 GCP 로 돌린다 (DB 가 있던 쪽)
+                if (option.value === "onprem" && provider === "MULTI") onProviderChange?.("GCP");
+                onChange(option.value);
+              }}
               className="sr-only"
             />
             <span className="font-semibold">{t(option.label)}</span>

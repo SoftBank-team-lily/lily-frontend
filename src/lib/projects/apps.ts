@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime, BuildProgress, BurstLive, CloudMove, ProjectSchema, WriteQueue } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive, CloudMove, MultiTraffic, ProjectSchema, WriteQueue } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -384,6 +384,43 @@ function cloudMove(view: BuilderMove): CloudMove {
 async function builderReason(response: Response) {
   const body = (await response.json().catch(() => null)) as { message?: string } | null;
   return body?.message ?? "";
+}
+
+/** 멀티클라우드 앱의 GCP 비율과 클라우드별 Pod 수. builder 가 없거나 멀티클라우드가 아니면 null */
+export async function trafficStatus(appName: string): Promise<MultiTraffic | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/traffic`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as MultiTraffic;
+  } catch {
+    return null;
+  }
+}
+
+/** GCP 로 보내는 비율을 바꾼다. 엣지 Worker 가 30초 안에 새 비율을 쓴다 */
+export async function sendTraffic(appName: string, gcpPercent: number): Promise<MultiTraffic> {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/traffic`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gcpPercent }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 404)
+    throw new ApiError(409, "NOT_MULTI", "AWS + GCP 로 배포한 앱이 아니에요. 한 번 배포가 끝난 뒤 바꿀 수 있어요.");
+  if (!response.ok) {
+    console.error(`builder traffic ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+  return (await response.json()) as MultiTraffic;
 }
 
 /** 이 앱을 다른 클라우드로 옮긴 가장 최근 기록. 없거나 builder 가 없으면 null */

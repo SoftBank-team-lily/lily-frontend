@@ -33,7 +33,9 @@ import {
   moveHome,
   runtimeOf,
   sendBurst,
+  sendTraffic,
   sendWriteQueue,
+  trafficStatus,
   writeQueueStatus,
   type BurstStatus,
 } from "./apps";
@@ -159,7 +161,7 @@ function project(
     name: row.name,
     target: row.target,
     deploymentMode: row.deployment_mode ?? "HYBRID",
-    cloudProvider: row.cloud_provider === "GCP" ? "GCP" : "AWS",
+    cloudProvider: row.cloud_provider === "GCP" || row.cloud_provider === "MULTI" ? row.cloud_provider : "AWS",
     cloudSelection: row.cloud_selection ?? "manual",
     cloudSelectionReason: row.cloud_selection_reason,
     databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
@@ -265,6 +267,23 @@ function requireBurstable(row: Row): asserts row is Row & { app_name: string } {
  * 클라우드 버스팅을 켜고 끄고 비율을 정한다. 값은 저장하고 에이전트에 보낸다.
  * 에이전트가 끊겨 있어도 저장은 남고, 다시 붙으면 목록을 읽을 때 다시 보낸다.
  */
+/** 멀티클라우드(AWS + GCP) 프로젝트의 비율과 클라우드별 Pod 수. 아직 배포 전이면 traffic 은 null */
+export async function getTraffic(ownerId: string, id: string) {
+  const row = await projectRow(ownerId, id);
+  if (row.cloud_provider !== "MULTI" || !row.app_name) return { traffic: null };
+  return { traffic: await trafficStatus(row.app_name) };
+}
+
+/** GCP 로 보내는 비율(0~100)을 바꾼다. 나머지는 AWS */
+export async function updateTraffic(ownerId: string, id: string, gcpPercent: number) {
+  const row = await projectRow(ownerId, id);
+  if (row.cloud_provider !== "MULTI")
+    throw new ApiError(409, "NOT_MULTI", "AWS + GCP 프로젝트만 비율을 정해요.");
+  if (!row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "첫 배포가 끝난 뒤에 비율을 바꿀 수 있어요.");
+  return { traffic: await sendTraffic(row.app_name, gcpPercent) };
+}
+
 export async function updateBurst(ownerId: string, id: string, input: BurstInput) {
   const row = await projectRow(ownerId, id);
   requireBurstable(row);
