@@ -131,7 +131,7 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
   const url = project.latestDeployment?.url ?? null;
   const onprem = project.target === "onprem";
   const home = onprem ? (live?.home ?? null) : "CLOUD";
-  const cloud = project.cloudProvider === "GCP" ? "GCP" : "AWS";
+  const cloud = project.cloudProvider === "MULTI" ? "AWS + GCP" : project.cloudProvider === "GCP" ? "GCP" : "AWS";
 
   return (
     <div className="space-y-8">
@@ -448,6 +448,8 @@ function trafficLine(
   t: (text: string, values?: Record<string, unknown>) => string,
 ) {
   const cloud = project.cloudProvider === "GCP" ? "GCP" : "AWS";
+  if (project.target === "cloud" && project.cloudProvider === "MULTI")
+    return t("GCP 와 AWS 로 나눠요 (비율은 프로젝트에서 정해요)");
   if (project.target === "cloud") return t("{{cloud}} 100% (클라우드 앱)", { cloud });
   const live = project.burst?.live;
   const burst = project.burst;

@@ -886,5 +886,21 @@
   "클라우드에 배포한 앱만 다른 클라우드로 옮길 수 있어요.": "Only apps deployed to the cloud can be moved to another cloud.",
   "{{from}} 로 되돌리는 중이에요. 주소가 바뀐 뒤 반영을 기다렸다가 {{to}} 쪽을 지워요.": "Rolling back to {{from}}. After the address switches, it waits for propagation and then removes the {{to}} side.",
   "클라우드를 {{to}} 로 바꿨어요. 내 PC 로 다시 배포하면서 {{to}} 에 대기 Pod 를 만들어요.": "Switched the cloud to {{to}}. Redeploying to your PC creates the standby pod on {{to}}.",
-  "앱은 계속 내 PC 가 받아요. {{from}} 대기 Pod 를 지우고 내 PC 로 다시 배포해 {{to}} 에 대기 Pod 를 만들어요. 그동안 몇 분은 넘침과 PC 장애 때 클라우드 전환이 없어요. DB 를 클라우드(RDS 터널)에 둔 앱은 아직 옮기지 못해요.": "Your PC keeps serving the app. The {{from}} standby pod is removed and the app is redeployed to your PC to create a standby pod on {{to}}. For a few minutes there is no overflow or cloud failover. Apps with their database in the cloud (RDS tunnel) cannot be moved yet."
+  "앱은 계속 내 PC 가 받아요. {{from}} 대기 Pod 를 지우고 내 PC 로 다시 배포해 {{to}} 에 대기 Pod 를 만들어요. 그동안 몇 분은 넘침과 PC 장애 때 클라우드 전환이 없어요. DB 를 클라우드(RDS 터널)에 둔 앱은 아직 옮기지 못해요.": "Your PC keeps serving the app. The {{from}} standby pod is removed and the app is redeployed to your PC to create a standby pod on {{to}}. For a few minutes there is no overflow or cloud failover. Apps with their database in the cloud (RDS tunnel) cannot be moved yet.",
+  "AWS + GCP 트래픽": "AWS + GCP traffic",
+  "DB 는 GCP(Cloud SQL) 하나예요. 한쪽 클라우드가 응답하지 못하면 다른 쪽으로 보내요. 세션을 메모리에 두는 앱은 맞지 않아요.": "The database is a single GCP Cloud SQL instance. If one cloud cannot answer, requests go to the other. Apps that keep sessions in memory are not a fit.",
+  "첫 배포가 끝나면 비율을 정할 수 있어요.": "You can set the split after the first deploy finishes.",
+  "상태를 받지 못했어요": "Could not get status",
+  "Pod {{ready}}/{{replicas}} 준비": "{{ready}}/{{replicas}} pods ready",
+  "GCP 로 보내는 비율": "Share sent to GCP",
+  "GCP {{gcp}}%, AWS {{aws}}%": "GCP {{gcp}}%, AWS {{aws}}%",
+  "바꾼 비율은 30초 안에 모든 엣지에 반영돼요.": "A new split reaches every edge within 30 seconds.",
+  "GCP 와 AWS 로 나눠요 (비율은 프로젝트에서 정해요)": "Split between GCP and AWS (set the share in the project)",
+  "AWS + GCP": "AWS + GCP",
+  "두 클러스터에 같이 띄우고 요청을 나눠요. DB 는 Cloud SQL 하나이고 PostgreSQL 만 돼요. 클라우드 배포만 됩니다.": "Runs on both clusters and splits requests. One Cloud SQL database, PostgreSQL only. Cloud deploys only.",
+  "AWS + GCP 로 배포한 앱이 아니에요. 한 번 배포가 끝난 뒤 바꿀 수 있어요.": "This app is not deployed to AWS + GCP. You can change it after a deploy finishes.",
+  "AWS + GCP 프로젝트만 비율을 정해요.": "Only AWS + GCP projects have a split.",
+  "첫 배포가 끝난 뒤에 비율을 바꿀 수 있어요.": "You can change the split after the first deploy.",
+  "AWS + GCP 는 클라우드 배포만 돼요. 내 PC 앱은 AWS 나 GCP 하나를 골라 주세요.": "AWS + GCP is for cloud deploys only. For a my-PC app, choose AWS or GCP.",
+  "AWS + GCP 는 PostgreSQL 만 돼요.": "AWS + GCP supports PostgreSQL only."
 }

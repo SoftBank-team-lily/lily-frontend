@@ -12,6 +12,7 @@ import {
 import { FixPanel } from "./FixPanel";
 import { MovePanel } from "./MovePanel";
 import { CloudMovePanel } from "./CloudMovePanel";
+import { MultiCloudPanel } from "./MultiCloudPanel";
 import type { AppState, Project, DeploymentStatus } from "@/lib/projects/types";
 import { STAGES } from "@/lib/deploy/stages";
 import { placeBadge } from "@/lib/projects/burst";
@@ -72,8 +73,10 @@ export function ProjectItem({
     project.target === "cloud" && latest?.status === "succeeded" && !deploying;
   /** 다른 클라우드로 옮기기 창 (AWS ↔ GCP) */
   const [cloudMoving, setCloudMoving] = useState(false);
+  // 멀티클라우드(AWS + GCP)는 이미 두 클라우드에 떠 있어 옮기지 않는다
   const canCloudMove =
-    latest?.status === "succeeded" && !deploying && project.deploymentMode !== "ONPREM_ONLY";
+    latest?.status === "succeeded" && !deploying && project.deploymentMode !== "ONPREM_ONLY"
+    && project.cloudProvider !== "MULTI";
   /** 중지·다시 시작·삭제. 실패하면 이유를 보인다 */
   async function act(operation: () => Promise<void>) {
     if (lock.current) return;
@@ -241,6 +244,7 @@ export function ProjectItem({
         {project.deploymentMode !== "ONPREM_ONLY" && project.cloudProvider === "GCP" && (
           <>GCP · </>
         )}
+        {project.cloudProvider === "MULTI" && <>AWS + GCP · </>}
         {project.movedFromCloud && <>{t("클라우드 주소 그대로 ·")} </>}
         {project.databaseLocation && (
           <>{t(locationLabels[project.databaseLocation])} · </>
@@ -562,6 +566,9 @@ export function ProjectItem({
           }}
           onCancel={() => setMoving(false)}
         />
+      )}
+      {project.target === "cloud" && project.cloudProvider === "MULTI" && !editing && (
+        <MultiCloudPanel project={project} />
       )}
       {cloudMoving && project.deploymentMode !== "ONPREM_ONLY" && !editing && (
         <CloudMovePanel

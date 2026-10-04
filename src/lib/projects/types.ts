@@ -14,7 +14,14 @@ export type DeployTarget = "cloud" | "onprem";
  */
 export type DeploymentMode = "HYBRID" | "ONPREM_ONLY";
 /** 하이브리드의 클라우드. 온프레미스 전용은 AWS 로 둔다 (클라우드가 없다). 만든 뒤에는 바꾸지 않는다 */
-export type CloudProvider = "AWS" | "GCP";
+/** MULTI: 클라우드 전용 프로젝트를 GCP(DB) 와 AWS 에 같이 띄운다 */
+export type CloudProvider = "AWS" | "GCP" | "MULTI";
+/** 멀티클라우드 프로젝트의 클라우드별 비율과 Pod 수 (lily-builder GET /api/apps/{app}/traffic) */
+export type MultiTraffic = {
+  gcpPercent: number | null;
+  gcp: { replicas?: number; readyReplicas?: number; error?: string };
+  aws: { replicas?: number; readyReplicas?: number; error?: string };
+};
 /** 앱 DB. none: DB 없이 배포 */
 export type DatabaseChoice = "postgres" | "mysql" | "none";
 /**

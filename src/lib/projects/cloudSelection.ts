@@ -30,7 +30,7 @@ export const manualCloudSelection: CloudSelection = {
   id: "manual",
   applies: () => true,
   choose(input) {
-    return input.requested === "GCP" ? "GCP" : "AWS";
+    return input.requested === "GCP" || input.requested === "MULTI" ? input.requested : "AWS";
   },
 };
 
@@ -48,5 +48,6 @@ export function selectCloud(
 ): CloudProvider {
   if (input.deploymentMode === "ONPREM_ONLY") return "AWS";
   const strategy = chain.find((item) => item.applies(input)) ?? manualCloudSelection;
-  return strategy.choose(input) === "GCP" ? "GCP" : "AWS";
+  const chosen = strategy.choose(input);
+  return chosen === "GCP" || chosen === "MULTI" ? chosen : "AWS";
 }

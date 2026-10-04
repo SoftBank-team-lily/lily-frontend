@@ -87,7 +87,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
         database_location: DatabaseLocation | null;
         database_url: string | null;
         deployment_mode: "HYBRID" | "ONPREM_ONLY";
-        cloud_provider: "AWS" | "GCP";
+        cloud_provider: "AWS" | "GCP" | "MULTI";
         app_name: string | null;
         move: "onprem" | null;
         move_database: "cloud" | "local" | null;
@@ -146,7 +146,7 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
           deploymentMode: row.deployment_mode ?? "HYBRID",
           ...(row.deployment_mode === "ONPREM_ONLY"
             ? {}
-            : { cloudProvider: row.cloud_provider === "GCP" ? "GCP" as const : "AWS" as const }),
+            : { cloudProvider: row.cloud_provider === "GCP" || row.cloud_provider === "MULTI" ? row.cloud_provider : "AWS" as const }),
           ...(row.deployment_mode === "ONPREM_ONLY"
             ? row.database && row.database !== "none"
               ? { databaseLocation: "local" as const }

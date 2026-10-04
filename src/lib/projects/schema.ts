@@ -67,7 +67,7 @@ export const projectSchema = z
     name: nameSchema.optional(),
     target: z.enum(["cloud", "onprem"]).optional(),
     deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
-    cloudProvider: z.enum(["AWS", "GCP"]).optional(),
+    cloudProvider: z.enum(["AWS", "GCP", "MULTI"]).optional(),
     cloudSelection: z.enum(["auto", "manual"]).optional(),
     ...settingsShape(),
     // 등록할 때만 받는다. 바꾸면 tenant DB 가 엔진마다 따로 생겨서 updateSchema 에는 없다
@@ -97,8 +97,12 @@ export const projectSchema = z
       ctx.addIssue({ code: "custom", message: "온프레미스 전용은 내 PC 에만 배포해요." });
     if (value.deploymentMode === "ONPREM_ONLY" && value.databaseLocation && value.databaseLocation !== "local")
       ctx.addIssue({ code: "custom", message: "온프레미스 전용 DB 는 내 PC 에만 둘 수 있어요." });
-    if (value.deploymentMode === "ONPREM_ONLY" && value.cloudProvider === "GCP")
+    if (value.deploymentMode === "ONPREM_ONLY" && (value.cloudProvider === "GCP" || value.cloudProvider === "MULTI"))
       ctx.addIssue({ code: "custom", message: "온프레미스 전용은 클라우드를 고르지 않아요." });
+    if (value.cloudProvider === "MULTI" && value.target === "onprem")
+      ctx.addIssue({ code: "custom", message: "AWS + GCP 는 클라우드 배포만 돼요. 내 PC 앱은 AWS 나 GCP 하나를 골라 주세요." });
+    if (value.cloudProvider === "MULTI" && value.database === "mysql")
+      ctx.addIssue({ code: "custom", message: "AWS + GCP 는 PostgreSQL 만 돼요." });
     if (value.databaseUrl && value.database && value.database !== "none") {
       const engine = value.databaseUrl.startsWith("mysql:") ? "mysql" : "postgres";
       if (engine !== value.database)
@@ -149,7 +153,7 @@ export const updateSchema = z
     env: envSchema.optional(),
     removeEnv: z.array(envKeySchema).max(50).optional(),
     deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
-    cloudProvider: z.enum(["AWS", "GCP"]).optional(),
+    cloudProvider: z.enum(["AWS", "GCP", "MULTI"]).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "바꿀 내용이 없어요.");
@@ -176,6 +180,12 @@ export const burstSchema = z
   })
   .strict();
 export type BurstInput = z.infer<typeof burstSchema>;
+/** 멀티클라우드 프로젝트가 GCP 로 보내는 비율. 나머지는 AWS */
+export const trafficSchema = z
+  .object({
+    gcpPercent: z.number().int().min(0).max(100),
+  })
+  .strict();
 /** 엣지 쓰기 큐에 넣을 POST 경로. / 로 시작하고 쿼리·공백이 없다 (lily-builder EdgeQueueController 와 같다). 빈 목록이면 끈다 */
 /** 모니터 패널의 엣지 체크박스. 준 값만 바꾼다 (queue: 장애 중 쓰기 보관, snapshot: 장애 중 읽기 사본) */
 export const writeQueueSchema = z
