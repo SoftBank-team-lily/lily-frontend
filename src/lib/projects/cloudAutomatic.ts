@@ -30,7 +30,13 @@ export async function chooseCloudAutomatically(repo: string, settings: DeploySet
     jev_unavailable: "JEV 응답을 받지 못했어요. 다시 시도하거나 수동으로 선택해 주세요.",
   };
   const code = body.reason ?? body.error ?? "";
-  if (!response.ok || body.status !== "selected" || !["AWS", "GCP"].includes(body.provider ?? "") || typeof body.confidence !== "number" || !Number.isFinite(body.confidence) || body.confidence < 0.8 || body.confidence > 1)
-    throw new ApiError(409, "CLOUD_SELECTION_HELD", reasons[code] ?? "JEV가 클라우드 선택을 보류했어요. 저장소 분석과 작업기 설정을 확인하거나 수동으로 선택해 주세요.");
-  return { provider: body.provider as CloudProvider, reason: `JEV · ${body.provider} · ${Math.round(body.confidence * 100)}%${body.repository?.commit && /^[a-f0-9]{40}$/.test(body.repository.commit) ? ` · ${body.repository.commit.slice(0, 7)}` : ""}` };
+  const provider = body.provider ?? "";
+  if (!response.ok || body.status !== "selected" || !["AWS", "GCP"].includes(provider))
+    throw new ApiError(409, "CLOUD_SELECTION_HELD", reasons[code] ?? "클라우드를 자동으로 정하지 못했어요. 저장소 분석과 작업기 설정을 확인하거나 수동으로 선택해 주세요.");
+  // 후보가 하나이거나 레포가 어느 쪽에도 묶이지 않거나 JEV 가 정하지 못하면 builder 가 규칙으로 정한다. 확신도가 없다.
+  const ruled: Record<string, string> = { single_candidate: "준비된 클라우드", portable_default: "특정 클라우드에 묶이지 않음", fallback_default: "기본값" };
+  if (body.confidence == null && code in ruled) return { provider: provider as CloudProvider, reason: `자동 · ${provider} · ${ruled[code]}` };
+  if (typeof body.confidence !== "number" || !Number.isFinite(body.confidence) || body.confidence < 0.8 || body.confidence > 1)
+    throw new ApiError(409, "CLOUD_SELECTION_HELD", reasons[code] ?? "클라우드를 자동으로 정하지 못했어요. 저장소 분석과 작업기 설정을 확인하거나 수동으로 선택해 주세요.");
+  return { provider: provider as CloudProvider, reason: `JEV · ${provider} · ${Math.round(body.confidence * 100)}%${body.repository?.commit && /^[a-f0-9]{40}$/.test(body.repository.commit) ? ` · ${body.repository.commit.slice(0, 7)}` : ""}` };
 }
