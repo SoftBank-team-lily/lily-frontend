@@ -175,7 +175,7 @@ describe("배포 화면", () => {
     );
     states = [project("succeeded", { url: "https://app.lilycloud.kr" })];
     render(<LandingPage />);
-    fireEvent.click(screen.getByRole("radio", { name: /^온프레미스직접/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^하이브리드내 PC/ }));
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByRole("button", { name: "배포 시작" })).toBeDisabled();
     expect(
@@ -208,7 +208,7 @@ describe("배포 화면", () => {
           : respond(404, { error: { code: "NOT_FOUND", message: "없음" } }),
     );
     render(<LandingPage />);
-    fireEvent.click(screen.getByRole("radio", { name: /^온프레미스직접/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^하이브리드내 PC/ }));
     await act(() => vi.advanceTimersByTimeAsync(0));
     submit();
     await act(() => vi.advanceTimersByTimeAsync(0));
@@ -225,7 +225,7 @@ describe("배포 화면", () => {
       respond(401, { error: { code: "UNAUTHORIZED", message: "로그인" } }),
     );
     render(<LandingPage onNeedLogin={login} />);
-    fireEvent.click(screen.getByRole("radio", { name: /^온프레미스직접/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^하이브리드내 PC/ }));
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(
       screen.getByText("로그인하면 에이전트를 연결할 수 있어요."),

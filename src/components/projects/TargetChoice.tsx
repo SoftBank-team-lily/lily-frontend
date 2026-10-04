@@ -17,15 +17,29 @@ const options: { value: DeployTarget; label: string; description: string }[] = [
   },
 ];
 
-const modes: { value: DeploymentMode; label: string; description: string }[] = [
+type Place = "cloud" | "hybrid" | "onprem";
+
+/** 배포 방식 하나로 모드(HYBRID/ONPREM_ONLY)와 거점(cloud/onprem)을 같이 정한다 */
+const places: { value: Place; mode: DeploymentMode; target: DeployTarget; label: string; description: string }[] = [
   {
-    value: "HYBRID",
-    label: "하이브리드",
-    description: "클라우드와 내 PC 를 오갈 수 있고, 넘친 요청은 고른 클라우드가 받아요.",
+    value: "cloud",
+    mode: "HYBRID",
+    target: "cloud",
+    label: "클라우드",
+    description: "Lily 클러스터에 배포해요. 나중에 내 PC 로 옮길 수도 있어요.",
   },
   {
-    value: "ONPREM_ONLY",
-    label: "온프레미스 전용",
+    value: "hybrid",
+    mode: "HYBRID",
+    target: "onprem",
+    label: "하이브리드",
+    description: "내 PC 에서 돌리다 요청이 넘치면 고른 클라우드가 받아요. 거점도 오갈 수 있어요.",
+  },
+  {
+    value: "onprem",
+    mode: "ONPREM_ONLY",
+    target: "onprem",
+    label: "온프레미스",
     description: "데이터는 내 PC 밖으로 나가지 않아요. 버스팅은 없고, PC 가 꺼지면 서비스도 멈춥니다.",
   },
 ];
@@ -97,23 +111,29 @@ export function TargetChoice({
   onProviderChange?: (provider: CloudProvider) => void;
 }) {
   const { t } = useI18n();
+  const place: Place = mode === "ONPREM_ONLY" ? "onprem" : value === "cloud" ? "cloud" : "hybrid";
   return (
     <div className="flex flex-col gap-4">
       {onModeChange && (
         <fieldset className="flex flex-col gap-2 text-control">
-          <legend className="mb-2">{t("배포 모드")}</legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {modes.map((option) => (
+          <legend className="mb-2">{t("배포 방식")}</legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {places.map((option) => (
               <label
                 key={option.value}
                 className="flex cursor-pointer flex-col gap-1 rounded-xl border border-line p-4 has-[:checked]:border-ink focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent"
               >
                 <input
                   type="radio"
-                  name="deploymentMode"
+                  name="deployPlace"
                   value={option.value}
-                  checked={mode === option.value}
-                  onChange={() => onModeChange(option.value)}
+                  checked={place === option.value}
+                  onChange={() => {
+                    // AWS + GCP 는 클라우드 배포만. 클라우드 밖으로 바꾸면 GCP 로 돌린다 (DB 가 있던 쪽)
+                    if (option.target === "onprem" && provider === "MULTI") onProviderChange?.("GCP");
+                    onModeChange(option.mode);
+                    onChange(option.target);
+                  }}
                   className="sr-only"
                 />
                 <span className="font-semibold">{t(option.label)}</span>
@@ -162,7 +182,7 @@ export function TargetChoice({
           </div>
         </fieldset>
       )}
-      {mode === "ONPREM_ONLY" ? null : (
+      {onModeChange || mode === "ONPREM_ONLY" ? null : (
     <fieldset className="flex flex-col gap-2 text-control">
       <legend className="mb-2">{t("거점")}</legend>
       <div className="grid grid-cols-2 gap-3">
