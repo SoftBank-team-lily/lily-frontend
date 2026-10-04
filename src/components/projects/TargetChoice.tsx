@@ -141,7 +141,7 @@ export function TargetChoice({
       {onProviderChange && (!onSelectionChange || selection === "manual") && mode !== "ONPREM_ONLY" && (
         <fieldset className="flex flex-col gap-2 text-control">
           <legend className="mb-2">{t("클라우드 제공자")}</legend>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className={`grid grid-cols-2 gap-3 ${value === "cloud" ? "sm:grid-cols-3" : ""}`}>
             {providers.filter((option) => option.value !== "MULTI" || value === "cloud").map((option) => (
               <label
                 key={option.value}
