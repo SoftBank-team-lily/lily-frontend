@@ -10,15 +10,29 @@ import {
   burstLock,
   burstSummary,
   databaseMoveOffer,
+  elapsed,
   homeLabels,
   homeLock,
 } from "@/lib/projects/burst";
-import type { Project, ProjectBurst } from "@/lib/projects/types";
+import type { HomePhase, Project, ProjectBurst } from "@/lib/projects/types";
 import { Button } from "@/components/ui/Button";
 import { ActivityProgress } from "./ActivityProgress";
 
 /** 슬라이더를 멈추고 이만큼 지나면 보낸다. 끄는 중간 값마다 보내지 않는다 */
 const COMMIT_MS = 500;
+/** 전환 요청 뒤 에이전트가 이만큼 지나도 시작하지 않으면 확인하라고 알린다 */
+const START_WAIT_MS = 30_000;
+
+/** 켜져 있는 동안 1초마다 바뀌는 지금 시각 */
+function useNow(active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return now;
+}
 
 /**
  * 온프레미스 앱의 클라우드 버스팅과 거점.
@@ -56,6 +70,16 @@ export function BurstPanel({
   const [confirmHome, setConfirmHome] = useState<"cloud" | "onprem" | null>(
     null,
   );
+  /**
+   * 서버가 받은 거점 전환 요청. 에이전트가 다음 보고에서 MOVING 으로 바뀌기 전까지 화면에 아무 변화가 없으므로,
+   * 보낼 때의 거점과 마지막 기록이 그대로인 동안 "시작을 기다리는 중"을 보인다
+   */
+  const [requested, setRequested] = useState<{
+    target: "cloud" | "onprem";
+    home: HomePhase;
+    event: string;
+    at: number;
+  } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragging = useRef(false);
   useEffect(() => {
@@ -82,12 +106,24 @@ export function BurstPanel({
   const locked = burstLock(burst);
   /** 거점을 지금 못 옮기는 이유 (버스팅 대기 배포 중) */
   const homeLocked = homeLock(burst);
+  const waitingHome =
+    requested &&
+    home === requested.home &&
+    (live?.homeEvent ?? "") === requested.event
+      ? requested
+      : null;
+  const now = useNow(Boolean(waitingHome));
 
-  async function send(action: string, operation: () => Promise<Project>) {
+  /** @returns 서버가 받았으면 true */
+  async function send(
+    action: string,
+    operation: () => Promise<Project>,
+  ): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
       onUpdate(await operation());
+      return true;
     } catch (problem) {
       setError({
         action,
@@ -103,6 +139,7 @@ export function BurstPanel({
           problem instanceof ProjectError && problem.code === "AGENT_OFFLINE",
         seen: burst,
       });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -142,7 +179,16 @@ export function BurstPanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ home: target, migrateDatabase }),
         }),
-    ).then(() => setConfirmHome(null));
+    ).then((accepted) => {
+      setConfirmHome(null);
+      if (accepted && home)
+        setRequested({
+          target,
+          home,
+          event: live?.homeEvent ?? "",
+          at: Date.now(),
+        });
+    });
   const offer = confirmHome ? databaseMoveOffer(live, confirmHome) : false;
   const cancelHome = () =>
     send(t("전환 취소"), () =>
@@ -254,29 +300,70 @@ export function BurstPanel({
         <div className="mt-4 border-t border-line pt-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-ink">
-              {t("공개 주소 거점 ·")}
-              <span className={moving ? "text-warning" : "text-ink"}>
-                {t(homeLabels[home])}
+              {t("공개 주소 거점 ·")}{" "}
+              <span
+                className={
+                  moving || waitingHome
+                    ? "font-semibold text-warning"
+                    : "font-semibold text-ink"
+                }
+              >
+                {waitingHome
+                  ? t(
+                      waitingHome.target === "cloud"
+                        ? "내 PC (클라우드로 전환 시작 대기)"
+                        : "클라우드 (내 PC 로 전환 시작 대기)",
+                    )
+                  : t(homeLabels[home])}
               </span>
             </p>
             {live?.movable &&
               !moving &&
+              !waitingHome &&
               (home === "ONPREM" || home === "CLOUD") && (
-                <button
-                  type="button"
-                  disabled={busy || Boolean(homeLocked)}
+                <Button
+                  variant="ghost"
+                  className="h-10"
+                  disabled={busy || Boolean(homeLocked) || Boolean(confirmHome)}
                   title={homeLocked ? t(homeLocked) : undefined}
                   onClick={() =>
                     setConfirmHome(home === "ONPREM" ? "cloud" : "onprem")
                   }
-                  className="text-mute hover:text-ink disabled:opacity-40"
                 >
                   {home === "ONPREM"
-                    ? t("온프레미스 → 클라우드 전환")
-                    : t("클라우드 → 온프레미스 전환")}
-                </button>
+                    ? t("클라우드로 옮기기")
+                    : t("내 PC 로 옮기기")}
+                </Button>
               )}
           </div>
+          {waitingHome && (
+            <div
+              className="mt-3 rounded-xl border border-line p-3"
+              aria-live="polite"
+            >
+              <p className="font-semibold text-warning">
+                {waitingHome.target === "cloud"
+                  ? t("온프레미스 → 클라우드 전환 요청을 보냈어요")
+                  : t("클라우드 → 온프레미스 전환 요청을 보냈어요")}
+              </p>
+              <p className="mt-1 text-mute">
+                {t(
+                  "내 PC 에이전트가 요청을 받아 시작하면 여기에 단계와 진행률이 나와요.",
+                )}
+                {elapsed(waitingHome.at, now) &&
+                  t(" · {{value0}} 지남", {
+                    value0: t(elapsed(waitingHome.at, now)!),
+                  })}
+              </p>
+              {now - waitingHome.at > START_WAIT_MS && (
+                <p className="mt-1 text-warning">
+                  {t(
+                    "에이전트가 아직 시작하지 않았어요. 내 PC 에이전트가 켜져 있는지 확인해 주세요.",
+                  )}
+                </p>
+              )}
+            </div>
+          )}
           {homeLocked && !moving && (
             <p className="mt-1 text-mute">{t(homeLocked)}</p>
           )}
