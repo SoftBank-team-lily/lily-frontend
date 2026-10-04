@@ -48,4 +48,41 @@ describe("프로젝트 입력 검증", async () => {
     expect(validate(homeSchema, { home: "cloud" })).toEqual({ home: "cloud" });
     expect(() => validate(homeSchema, { home: "edge" })).toThrow();
   });
+
+  it("모니터 패널의 장애 대비 체크박스는 queue·snapshot 불리언 중 하나 이상을 받고, 빈 본문과 경로는 거절한다", async () => {
+    const { writeQueueSchema } = await import("./schema");
+    expect(validate(writeQueueSchema, { queue: false })).toEqual({ queue: false });
+    expect(validate(writeQueueSchema, { snapshot: true, queue: true })).toEqual({ snapshot: true, queue: true });
+    expect(() => validate(writeQueueSchema, {})).toThrow();
+    expect(() => validate(writeQueueSchema, { queue: "yes" })).toThrow();
+    expect(() => validate(writeQueueSchema, { paths: ["/posts"] })).toThrow();
+  });
+
+  it("배포할 때 장애 대비 체크박스는 온프레미스 프로젝트만 받는다", () => {
+    expect(validate(projectSchema, { repo: "o/r", target: "onprem", edgeSnapshot: false, edgeQueue: true })).toMatchObject({
+      edgeSnapshot: false,
+      edgeQueue: true,
+    });
+    expect(validate(projectSchema, { repo: "o/r", deploymentMode: "ONPREM_ONLY", edgeQueue: false })).toMatchObject({
+      edgeQueue: false,
+    });
+    expect(() => validate(projectSchema, { repo: "o/r", target: "cloud", edgeSnapshot: true })).toThrow();
+  });
+});
+
+describe("다른 클라우드로 옮기기 입력", async () => {
+  const { cloudMoveSchema, validate } = await import("./schema");
+
+  it("시작은 옮길 클라우드를 받고, 되돌리기는 새 쪽 쓰기를 버린다는 확인이 있어야 한다", () => {
+    expect(validate(cloudMoveSchema, { action: "start", to: "GCP" })).toEqual({ action: "start", to: "GCP" });
+    expect(validate(cloudMoveSchema, { action: "finalize" })).toEqual({ action: "finalize" });
+    expect(validate(cloudMoveSchema, { action: "rollback", discardTargetWrites: true })).toEqual({
+      action: "rollback",
+      discardTargetWrites: true,
+    });
+    expect(() => validate(cloudMoveSchema, { action: "start" })).toThrow();
+    expect(() => validate(cloudMoveSchema, { action: "start", to: "AZURE" })).toThrow();
+    expect(() => validate(cloudMoveSchema, { action: "rollback" })).toThrow();
+    expect(() => validate(cloudMoveSchema, { action: "rollback", discardTargetWrites: false })).toThrow();
+  });
 });

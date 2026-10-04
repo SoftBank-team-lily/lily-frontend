@@ -17,23 +17,31 @@ import type {
   Diagnosis,
   ProjectEntry,
 } from "./types";
-import type { BurstInput, ProjectFix, ProjectUpdate } from "./schema";
-import { autoFixAttempt } from "@/lib/builder/run";
+import type { BurstInput, ProjectFix, ProjectUpdate, WriteQueueInput } from "./schema";
+import { autoFixAttempt, buildSettings, CANCELLED_MESSAGE } from "@/lib/builder/run";
 import {
   appAction,
   burstStatus,
+  cancelBuild,
   cancelHome,
   clusterApps,
+  cloudMoveAction,
+  cloudMoveStatus,
   completeSchema,
+  startCloudMoveOnBuilder,
   schemaHistory,
   moveHome,
   runtimeOf,
   sendBurst,
+  sendWriteQueue,
+  writeQueueStatus,
   type BurstStatus,
 } from "./apps";
 import { getAgent } from "@/lib/agents/server";
-import type { AppRuntime, BurstLive, ProjectBurst, ProjectSchema } from "./types";
+import type { AppRuntime, BurstLive, CloudMove, CloudProvider, ProjectBurst, ProjectSchema, WriteQueue } from "./types";
 import { databaseMoveOffer } from "./burst";
+import { chooseCloudAutomatically } from "./cloudAutomatic";
+import { selectCloud } from "./cloudSelection";
 
 type Row = {
   id: string;
@@ -41,6 +49,9 @@ type Row = {
   name: string;
   target: DeployTarget;
   deployment_mode: DeploymentMode;
+  cloud_provider: CloudProvider;
+  cloud_selection: "auto" | "manual";
+  cloud_selection_reason: string | null;
   database_location: DatabaseLocation | null;
   burst_enabled: boolean;
   burst_cloud_percent: number;
@@ -67,7 +78,7 @@ type Row = {
   move: "onprem" | null;
 };
 // url, message: 실행기(src/lib/builder)가 배포 결과 주소를 builder_runs 에 남긴다
-const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.database_location, p.database, p.app_name AS fixed_app_name,
+const selectProject = `SELECT p.id, p.repo, p.name, p.target, p.deployment_mode, p.cloud_provider, p.cloud_selection, p.cloud_selection_reason, p.database_location, p.database, p.app_name AS fixed_app_name,
   p.burst_enabled, p.burst_cloud_percent,
   p.root_dir, p.branch, p.port, p.health_path, p.webhook_secret,
   p.github_installation_id::text AS github_installation_id,
@@ -148,6 +159,9 @@ function project(
     name: row.name,
     target: row.target,
     deploymentMode: row.deployment_mode ?? "HYBRID",
+    cloudProvider: row.cloud_provider === "GCP" ? "GCP" : "AWS",
+    cloudSelection: row.cloud_selection ?? "manual",
+    cloudSelectionReason: row.cloud_selection_reason,
     databaseLocation: row.target === "onprem" ? (row.database_location ?? null) : null,
     database: row.database ?? null,
     movedFromCloud: row.target === "onprem" && row.fixed_app_name !== null,
@@ -346,6 +360,42 @@ export async function cancelHomeMove(ownerId: string, id: string) {
   await cancelHome(row.app_name);
   return getProject(ownerId, id, true);
 }
+/**
+ * 진행 중인 배포를 멈춘다. builder 로 보낸 배포는 builder 에 취소를 보내고(클라우드는 lily-cicd 로 넘기기 전,
+ * 내 PC 는 트래픽을 새 버전으로 바꾸기 전까지), 아직 보내지 않은 배포는 바로 cancelled 로 닫는다.
+ * 클라우드 앱을 내 PC 로 옮기던 배포는 실행기가 CANCELLED 를 보고 클라우드를 되돌린 뒤 닫는다.
+ * @throws ApiError 진행 중이 아님(409 NOT_DEPLOYING), 이미 멈출 수 없는 단계(409 NOT_CANCELLABLE)
+ */
+export async function cancelDeployment(ownerId: string, id: string, deploymentId: string) {
+  await projectRow(ownerId, id);
+  const found = await db.query<{ status: DeploymentStatus; move: "onprem" | null; build_id: string | null }>(
+    `SELECT d.status, d.move, r.build_id FROM deployments d
+    LEFT JOIN builder_runs r ON r.deployment_id=d.id WHERE d.id=$1 AND d.project_id=$2`,
+    [deploymentId, id],
+  );
+  const row = found.rows[0];
+  if (!row) throw new ApiError(404, "NOT_FOUND", "배포 기록을 찾을 수 없어요.");
+  if (row.status !== "queued" && row.status !== "running")
+    throw new ApiError(409, "NOT_DEPLOYING", "진행 중인 배포가 아니에요.");
+  // builder 에 기록이 없으면(이미 지워짐) 멈출 작업도 없다. 기록만 닫는다
+  const sent = row.build_id ? await cancelBuild(row.build_id) : false;
+  if (!sent || !row.move) {
+    await db.query(
+      `INSERT INTO builder_runs(deployment_id, build_id, app_name, message) VALUES ($1, NULL, '', $2)
+      ON CONFLICT (deployment_id) DO UPDATE SET message=EXCLUDED.message`,
+      [deploymentId, CANCELLED_MESSAGE],
+    );
+    try {
+      await recordEvent(deploymentId, "user-cancel", "cancelled");
+    } catch (error) {
+      // 실행기가 builder 의 CANCELLED 를 먼저 보고 닫았다
+      if (!(error instanceof ApiError && error.code === "INVALID_TRANSITION")) throw error;
+      const now = await db.query<{ status: DeploymentStatus }>("SELECT status FROM deployments WHERE id=$1", [deploymentId]);
+      if (now.rows[0]?.status !== "cancelled") throw error;
+    }
+  }
+  return getProject(ownerId, id, true);
+}
 /** 중지·시작·삭제 전에 본다. 배포가 진행 중이면 실행기가 곧 앱을 다시 만들거나 바꾼다 */
 function assertIdle(row: Row) {
   if (row.status === "queued" || row.status === "running")
@@ -396,6 +446,35 @@ export async function getSchema(
   };
 }
 /**
+ * 온프레미스 앱의 엣지 쓰기 큐. 등록 경로와 쌓인 요청은 Cloudflare(앱의 Durable Object)에 있고 builder 로 읽는다.
+ * available=false: 아직 배포하지 않았거나 플랫폼에서 큐가 꺼져 있음. queue=null: 확인하지 못함
+ */
+export async function getWriteQueue(
+  ownerId: string,
+  id: string,
+): Promise<{ available: boolean; queue: WriteQueue | null }> {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "onprem" || !row.app_name) return { available: false, queue: null };
+  const status = await writeQueueStatus(row.app_name);
+  if (status === null) return { available: true, queue: null };
+  return status.enabled ? { available: true, queue: status.queue } : { available: false, queue: null };
+}
+/** 엣지 쓰기 큐 등록 경로를 바꾼다. 빈 목록이면 끈다 (이미 쌓인 요청은 PC 가 돌아오면 계속 보낸다) */
+export async function updateWriteQueue(ownerId: string, id: string, input: WriteQueueInput) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "onprem")
+    throw new ApiError(409, "CLOUD", "엣지 쓰기 큐는 온프레미스 앱에서만 써요.");
+  if (!row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "먼저 내 PC 로 배포해 주세요.");
+  const queue = await sendWriteQueue(row.app_name, input);
+  // 다음 배포가 배포 화면 값으로 되돌리지 않게 프로젝트에도 남긴다
+  await db.query(
+    "UPDATE projects SET edge_queue=COALESCE($3, edge_queue), edge_snapshot=COALESCE($4, edge_snapshot) WHERE id=$1 AND owner_id=$2",
+    [id, ownerId, input.queue ?? null, input.snapshot ?? null],
+  );
+  return { available: true, queue };
+}
+/**
  * pgroll 롤백 창을 바로 닫는다. 이후에는 이번 마이그레이션 전으로 스키마를 되돌릴 수 없다.
  */
 export async function closeSchemaWindow(ownerId: string, id: string) {
@@ -419,6 +498,74 @@ export async function deleteProject(ownerId: string, id: string, database: boole
   if (row.app_name) removed = await appAction(row.app_name, "delete", database);
   await db.query("DELETE FROM projects WHERE id=$1 AND owner_id=$2", [id, ownerId]);
   return { id, removed };
+}
+/**
+ * 클라우드 전용 앱을 다른 클라우드로 옮긴다 (AWS ↔ GCP, PostgreSQL 은 RDS ↔ Cloud SQL 로 복사).
+ * builder 는 환경변수를 저장하지 않아서 평소 배포와 같은 요청을 만들어 보낸다. 진행은 builder 가 하고,
+ * 화면은 {@link getCloudMove} 로 본다. 옮기기를 마치면 프로젝트 클라우드를 바꾼다 (다음 배포가 새 클라우드로 가게).
+ */
+export async function startCloudMove(ownerId: string, id: string, to: CloudProvider) {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || row.deployment_mode === "ONPREM_ONLY")
+    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱만 다른 클라우드로 옮길 수 있어요.");
+  assertIdle(row);
+  if (row.status !== "succeeded" || !row.app_name)
+    throw new ApiError(409, "NOT_DEPLOYED", "클라우드 배포가 끝난 앱만 옮길 수 있어요.");
+  if ((row.cloud_provider ?? "AWS") === to)
+    throw new ApiError(409, "SAME_CLOUD", `이미 ${to} 에 있어요.`);
+  const env = await db.query<{ env: Record<string, string> | null }>(
+    "SELECT env FROM projects WHERE id=$1 AND owner_id=$2",
+    [id, ownerId],
+  );
+  const body = {
+    repoUrl: `https://github.com/${row.repo}`,
+    appName: row.app_name,
+    database: process.env.BUILDER_DATABASE || null,
+    ...buildSettings({
+      branch: row.branch ?? undefined,
+      rootDir: row.root_dir || undefined,
+      port: row.port ?? undefined,
+      healthPath: row.health_path ?? undefined,
+      env: env.rows[0]?.env ?? undefined,
+      database: row.database ?? undefined,
+      deploymentMode: "HYBRID",
+      cloudProvider: to,
+    }),
+  };
+  const move = await startCloudMoveOnBuilder(row.app_name, body);
+  return { move, project: await getProject(ownerId, id) };
+}
+
+/** 옮기기 상태. 끝났으면(HOLD·FINALIZED·ROLLED_BACK) 프로젝트 클라우드를 builder 기록에 맞춘다 */
+export async function getCloudMove(ownerId: string, id: string): Promise<{ move: CloudMove | null }> {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name) return { move: null };
+  const move = await cloudMoveStatus(row.app_name);
+  if (move) await syncCloudProvider(ownerId, id, row.cloud_provider ?? "AWS", move);
+  return { move };
+}
+
+/** HOLD 에서 원본으로 되돌리거나(rollback, 옮긴 뒤 쓴 데이터는 버린다) 원본 클러스터를 정리한다(finalize) */
+export async function finishCloudMove(ownerId: string, id: string, action: "rollback" | "finalize") {
+  const row = await projectRow(ownerId, id);
+  if (row.target !== "cloud" || !row.app_name)
+    throw new ApiError(409, "NOT_CLOUD", "클라우드에 배포한 앱이 아니에요.");
+  assertIdle(row);
+  const move = await cloudMoveAction(row.app_name, action);
+  await syncCloudProvider(ownerId, id, row.cloud_provider ?? "AWS", move);
+  return { move, project: await getProject(ownerId, id) };
+}
+
+/** builder 가 옮기기를 마쳤거나 되돌렸으면 프로젝트 클라우드를 따라 바꾼다. 일반 수정은 여전히 클라우드를 잠근다 */
+async function syncCloudProvider(ownerId: string, id: string, current: CloudProvider, move: CloudMove) {
+  const settled =
+    move.state === "HOLD" || move.state === "FINALIZED"
+      ? move.to
+      : move.state === "ROLLED_BACK"
+        ? move.from
+        : null;
+  if (!settled || settled === current) return;
+  await db.query("UPDATE projects SET cloud_provider=$3 WHERE id=$1 AND owner_id=$2", [id, ownerId, settled]);
 }
 /** 에이전트의 앱 이름 규칙 (lily-on-premise DeployJob). 클라우드 앱 이름이 이보다 길면 내 PC 로 옮길 수 없다 */
 const AGENT_APP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
@@ -528,6 +675,7 @@ export async function createProject(
   settings: DeploySettings = {},
 ) {
   const mode: DeploymentMode = settings.deploymentMode === "ONPREM_ONLY" ? "ONPREM_ONLY" : "HYBRID";
+  const selection = settings.cloudSelection ?? (settings.cloudProvider ? "manual" : "auto");
   if (mode === "ONPREM_ONLY") target = "onprem";
   if (target === "onprem") {
     // 에이전트 하나는 공개 주소 하나, 앱 하나만 띄운다 (lily-on-premise)
@@ -542,12 +690,20 @@ export async function createProject(
         `온프레미스에는 프로젝트를 하나만 둘 수 있어요. 지금은 '${existing.rows[0].name}'이(가) 있어요.`,
       );
   }
+  const automatic = mode !== "ONPREM_ONLY" && selection === "auto" ? await chooseCloudAutomatically(repo, settings) : null;
+  const provider = automatic?.provider ?? selectCloud({
+    deploymentMode: mode,
+    requested: settings.cloudProvider,
+    repo,
+    rootDir: settings.rootDir,
+    database: settings.database,
+  });
   const id = randomUUID();
   const rootDir = settings.rootDir ?? "";
   await db.query(
-    `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, branch, root_dir, port, health_path, env, database,
-      database_location, database_url, webhook_secret)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    `INSERT INTO projects(id, owner_id, repo, name, target, deployment_mode, cloud_provider, branch, root_dir, port, health_path, env, database,
+      database_location, database_url, webhook_secret, cloud_selection, cloud_selection_reason, edge_snapshot, edge_queue)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
       id,
       ownerId,
@@ -556,6 +712,7 @@ export async function createProject(
       name ?? (rootDir ? `${repo.split("/")[1]}/${rootDir}` : repo.split("/")[1]),
       target,
       mode,
+      provider,
       settings.branch || null,
       rootDir,
       settings.port ?? null,
@@ -574,6 +731,11 @@ export async function createProject(
         ? (settings.databaseUrl ?? null)
         : null,
       createWebhookSecret(),
+      mode === "ONPREM_ONLY" ? "manual" : selection,
+      automatic?.reason ?? null,
+      // PC 장애 대비 체크박스. 온프레미스는 고르지 않으면 둘 다 켠다. 클라우드는 쓰지 않는다
+      target === "onprem" ? (settings.edgeSnapshot ?? true) : null,
+      target === "onprem" ? (settings.edgeQueue ?? true) : null,
     ],
   );
   try {
@@ -589,16 +751,22 @@ export async function updateProject(
   id: string,
   input: ProjectUpdate,
 ) {
-  if (input.deploymentMode !== undefined) {
+  if (input.deploymentMode !== undefined || input.cloudProvider !== undefined) {
     const row = await projectRow(ownerId, id);
-    if (input.deploymentMode !== (row.deployment_mode ?? "HYBRID"))
+    if (input.deploymentMode !== undefined && input.deploymentMode !== (row.deployment_mode ?? "HYBRID"))
       throw new ApiError(
         409,
         "MODE_LOCKED",
         "배포 모드는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
       );
+    if (input.cloudProvider !== undefined && input.cloudProvider !== (row.cloud_provider ?? "AWS"))
+      throw new ApiError(
+        409,
+        "PROVIDER_LOCKED",
+        "클라우드 제공자는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
+      );
   }
-  const { deploymentMode: _mode, ...rest } = input;
+  const { deploymentMode: _mode, cloudProvider: _provider, ...rest } = input;
   if (Object.keys(rest).length === 0) return getProject(ownerId, id);
   const values: unknown[] = [id, ownerId];
   const sets: string[] = [];
@@ -774,11 +942,12 @@ export async function recordEvent(
       return deployment(row);
     }
     const transitions: Record<DeploymentStatus, string[]> = {
-      queued: ["running", "failed"],
-      running: ["succeeded", "failed", "rolled-back"],
+      queued: ["running", "failed", "cancelled"],
+      running: ["succeeded", "failed", "rolled-back", "cancelled"],
       succeeded: ["rolled-back"],
       failed: ["rolled-back"],
       "rolled-back": [],
+      cancelled: [],
     };
     if (!transitions[row.status].includes(status))
       throw new ApiError(

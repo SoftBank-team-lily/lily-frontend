@@ -12,6 +12,7 @@ import { StatusOverview } from "./StatusOverview";
 import { BurstPanel } from "./BurstPanel";
 import { MetricChart } from "./MetricChart";
 import { SchemaPanel } from "./SchemaPanel";
+import { WriteQueuePanel } from "./WriteQueuePanel";
 
 /** 거점·버스팅은 몇 초 단위로 바뀐다. 클러스터 지표는 30초 간격으로 쌓인다 */
 const PROJECT_MS = 4_000;
@@ -130,6 +131,7 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
   const url = project.latestDeployment?.url ?? null;
   const onprem = project.target === "onprem";
   const home = onprem ? (live?.home ?? null) : "CLOUD";
+  const cloud = project.cloudProvider === "GCP" ? "GCP" : "AWS";
 
   return (
     <div className="space-y-8">
@@ -155,7 +157,7 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
 
       <section aria-labelledby="compare-title">
         <h2 id="compare-title" className="text-lead font-semibold">
-          {t("HOME 과 AWS")}
+          {t("HOME 과 {{cloud}}", { cloud })}
         </h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <SideCard
@@ -183,7 +185,7 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
             ]}
           />
           <SideCard
-            name={"AWS · 클라우드"}
+            name={t("{{cloud}} · 클라우드", { cloud })}
             tone="cloud"
             current={home === "CLOUD"}
             empty={null}
@@ -218,7 +220,7 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
         </div>
         <p className="mt-3 text-control text-ink">
           <span className="text-mute">Traffic · </span>
-          {trafficLine(project)}
+          {trafficLine(project, t)}
         </p>
       </section>
 
@@ -244,7 +246,7 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
       <section aria-labelledby="metrics-title">
         <div className="flex flex-wrap items-center gap-3">
           <h2 id="metrics-title" className="text-lead font-semibold">
-            {t("AWS 지표")}
+            {t("{{cloud}} 지표", { cloud })}
           </h2>
           {status && (
             <span
@@ -315,6 +317,8 @@ export function ProjectMonitor({ initial }: { initial: Project }) {
       </section>
 
       {!onprem && <SchemaPanel projectId={project.id} />}
+
+      {onprem && <WriteQueuePanel projectId={project.id} />}
 
       {pods && pods.length > 0 && (
         <section aria-labelledby="pods-title">
@@ -439,16 +443,26 @@ function SideCard({
   );
 }
 
-function trafficLine(project: Project) {
-  if (project.target === "cloud") return "AWS 100% (클라우드 앱)";
+function trafficLine(
+  project: Project,
+  t: (text: string, values?: Record<string, unknown>) => string,
+) {
+  const cloud = project.cloudProvider === "GCP" ? "GCP" : "AWS";
+  if (project.target === "cloud") return t("{{cloud}} 100% (클라우드 앱)", { cloud });
   const live = project.burst?.live;
   const burst = project.burst;
-  if (!live) return "에이전트 상태를 확인하는 중";
-  if (live.home === "CLOUD") return "AWS 100% · 거점이 AWS 라 버스팅은 쉬어요";
-  if (live.home.startsWith("MOVING")) return "거점 전환 중";
-  if (!burst?.enabled || !live.enabled) return "HOME 100% · 버스팅 꺼짐";
-  if (live.cloudPercent === 0) return "자동 · HOME 이 넘칠 때만 AWS 가 받아요";
-  return `수동 · HOME ${100 - live.cloudPercent}% / AWS ${live.cloudPercent}%`;
+  if (!live) return t("에이전트 상태를 확인하는 중");
+  if (live.home === "CLOUD")
+    return t("{{cloud}} 100% · 거점이 {{cloud}} 라 버스팅은 쉬어요", { cloud });
+  if (live.home.startsWith("MOVING")) return t("거점 전환 중");
+  if (!burst?.enabled || !live.enabled) return t("HOME 100% · 버스팅 꺼짐");
+  if (live.cloudPercent === 0)
+    return t("자동 · HOME 이 넘칠 때만 {{cloud}} 가 받아요", { cloud });
+  return t("수동 · HOME {{home}}% / {{cloud}} {{share}}%", {
+    home: 100 - live.cloudPercent,
+    cloud,
+    share: live.cloudPercent,
+  });
 }
 
 function sum(values: (number | null)[]) {

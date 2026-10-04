@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
-import type { AppRuntime, BuildProgress, BurstLive, ProjectSchema } from "./types";
+import type { AppRuntime, BuildProgress, BurstLive, CloudMove, ProjectSchema, WriteQueue } from "./types";
 
 // 클러스터에 떠 있는 앱 상태와 중지·다시 시작·삭제. lily-builder 가 lily-cicd 로 넘긴다.
 // builder /api/apps 는 lily-cicd 이름 규칙({app}-svc, {app}-{slot})을 읽어 앱마다 health 를 준다.
@@ -82,6 +82,38 @@ export async function cancelHome(appName: string) {
   }
 }
 
+/**
+ * 진행 중인 빌드를 멈춘다 (lily-builder POST /api/builds/{id}/cancel).
+ * @return builder 가 멈췄으면 true, builder 에 그 빌드가 없으면 false
+ * @throws ApiError 이미 멈출 수 없는 단계(409 NOT_CANCELLABLE), builder 가 실패
+ */
+export async function cancelBuild(buildId: string) {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/builds/${encodeURIComponent(buildId)}/cancel`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 404) return false;
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new ApiError(
+      409,
+      "NOT_CANCELLABLE",
+      body?.message?.includes("lily-cicd")
+        ? "새 버전을 띄우기 시작해서 취소할 수 없어요. 끝난 뒤 롤백해 주세요."
+        : "이미 끝난 배포라 취소할 수 없어요.",
+    );
+  }
+  if (!response.ok) {
+    console.error(`builder cancel ${buildId}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+  return true;
+}
+
 /** 온프레미스 앱의 버스팅·거점 상태. 에이전트를 찾지 못했으면 connected=false, 확인하지 못했으면 null */
 export async function burstStatus(appName: string): Promise<BurstStatus | null> {
   const base = builderUrl();
@@ -97,6 +129,54 @@ export async function burstStatus(appName: string): Promise<BurstStatus | null> 
   } catch {
     return null;
   }
+}
+
+/** 엣지 쓰기 큐 상태. builder 에서 큐가 꺼져 있으면 enabled=false, 확인하지 못했으면 null */
+export async function writeQueueStatus(
+  appName: string,
+): Promise<{ enabled: true; queue: WriteQueue } | { enabled: false } | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/write-queue`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.status === 404) return { enabled: false };
+    if (!response.ok) return null;
+    return { enabled: true, queue: (await response.json()) as WriteQueue };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 엣지 체크박스를 바꾼다. queue: 장애 중 쓰기 보관(모든 POST), snapshot: 장애 중 읽기 사본. 준 값만 바꾼다.
+ * @throws ApiError builder 에서 큐가 꺼져 있음(409), 값이 맞지 않음(400), Cloudflare 에 닿지 못함(502)
+ */
+export async function sendWriteQueue(
+  appName: string,
+  change: { queue?: boolean; snapshot?: boolean },
+): Promise<WriteQueue> {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/write-queue`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(change),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 404)
+    throw new ApiError(409, "QUEUE_OFF", "이 플랫폼에서는 엣지 쓰기 큐가 꺼져 있어요.");
+  if (response.status === 400)
+    throw new ApiError(400, "INVALID_EDGE_OPTIONS", "장애 대비 설정 값이 맞지 않아요.");
+  if (!response.ok) {
+    console.error(`builder write-queue ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "Cloudflare 에 설정을 저장하지 못했어요. 잠시 뒤 다시 바꿔 주세요.");
+  }
+  return (await response.json()) as WriteQueue;
 }
 
 /**
@@ -280,4 +360,78 @@ export async function completeSchema(appName: string) {
     console.error(`builder schema complete ${appName}: ${response.status} ${await response.text()}`);
     throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
   }
+}
+
+type BuilderMove = Omit<CloudMove, "message"> & { logs?: string[] };
+
+function cloudMove(view: BuilderMove): CloudMove {
+  const failed = view.logs?.find((line) => line.startsWith("migrate: failed at "));
+  return {
+    id: view.id,
+    from: view.from,
+    to: view.to,
+    state: view.state,
+    step: view.step,
+    downtimeMs: view.downtimeMs ?? null,
+    startedAt: view.startedAt,
+    updatedAt: view.updatedAt,
+    message: view.state === "FAILED" && failed ? failed.replace(/^migrate: failed at \w+: /, "") : null,
+  };
+}
+
+async function builderReason(response: Response) {
+  const body = (await response.json().catch(() => null)) as { message?: string } | null;
+  return body?.message ?? "";
+}
+
+/** 이 앱을 다른 클라우드로 옮긴 가장 최근 기록. 없거나 builder 가 없으면 null */
+export async function cloudMoveStatus(appName: string): Promise<CloudMove | null> {
+  const base = builderUrl();
+  if (!base) return null;
+  try {
+    const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/migrate`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return cloudMove((await response.json()) as BuilderMove);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 옮기기를 시작한다. body 는 평소 배포 요청(환경변수 포함)에 cloudProvider 만 옮길 클라우드로 바꾼 것.
+ * @throws ApiError builder 가 거절한 이유(400·409)를 그대로 보인다
+ */
+export async function startCloudMoveOnBuilder(appName: string, body: object): Promise<CloudMove> {
+  return cloudMoveCall(appName, "", body);
+}
+
+/** HOLD 에서 원본으로 되돌리거나(rollback) 원본을 정리한다(finalize) */
+export async function cloudMoveAction(appName: string, action: "rollback" | "finalize"): Promise<CloudMove> {
+  return cloudMoveCall(appName, `/${action}`, action === "rollback" ? { discardTargetWrites: true } : undefined);
+}
+
+async function cloudMoveCall(appName: string, path: string, body: object | undefined): Promise<CloudMove> {
+  const base = builderUrl();
+  if (!base)
+    throw new ApiError(503, "BUILDER_UNAVAILABLE", "배포 서버에 연결돼 있지 않아요.");
+  const response = await fetch(`${base}/api/apps/${encodeURIComponent(appName)}/migrate${path}`, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+    // 되돌리기는 원본 Ready 와 주소 반영을 기다린다
+    signal: AbortSignal.timeout(path === "/rollback" ? 300_000 : 60_000),
+  });
+  if (response.status === 400 || response.status === 409) {
+    const reason = await builderReason(response);
+    throw new ApiError(409, "CLOUD_MOVE_REJECTED", reason ? `옮길 수 없어요: ${reason}` : "지금은 옮길 수 없어요.");
+  }
+  if (!response.ok) {
+    console.error(`builder migrate${path} ${appName}: ${response.status} ${await response.text()}`);
+    throw new ApiError(502, "BUILDER_FAILED", "배포 서버가 요청을 처리하지 못했어요.");
+  }
+  return cloudMove((await response.json()) as BuilderMove);
 }

@@ -103,6 +103,7 @@ Server Component인 `app/page.tsx`에서 일반 함수 콜백을 직접 넘기�
 같은 공개 origin의 `/dashboard` 경로로 연결합니다. 계정의 대시보드 버튼은 실패·배포 중인
 프로젝트도 열 수 있습니다. 꽃 클릭은 성공한 배포에만 허용합니다.
 온프레미스 거점 전환·클라우드 버스팅 비율 조절은 대시보드의 `거점과 트래픽` 패널에서 합니다.
+온프레미스 프로젝트는 배포 확인 창의 `PC 장애 대비` 체크박스로 장애 중 읽기 사본(Cache API)과 쓰기 보관(Durable Object, 모든 POST)을 켜고 끕니다. 기본은 둘 다 켜짐이고(`projects.edge_snapshot`·`edge_queue`, 마이그레이션 017), 배포 뒤에는 모니터 화면의 `PC 장애 대비` 패널에서 바꾸며 대기·반영·거절 건수, PC 상태, 마지막 PC 확인 결과도 봅니다 (lily-builder `/api/apps/{app}/write-queue`).
 계정 화면에는 배포·설정 관리와 대시보드 진입 링크만 둡니다.
 
 ## 인프라 연동 검토
@@ -404,3 +405,4 @@ GitHub App 설치와 수정 PR 서버 연결은 [GITHUB-APP.md](docs/GITHUB-APP.
 로컬 SSH 터널 주소를 내부 Service 주소로 바꾸는 방법, 인증·대시보드·모니터링·Groq/JEV 설정은 [배포 환경 변수 전환 안내](docs/DEPLOY_ENV.md)에 정리했습니다. 실제 키나 비밀번호를 포함하지 않아 팀 공유에 사용할 수 있습니다.
 
 `feature/ai-fix-progress`에서는 배포 화면 아래의 AI 수정 진행 패널로 런타임 장애 접수·수정안 생성/검사·경로 확인·PR 생성·검토 대기를 표시합니다. `pnpm db:migrate`로 014~017 SQL을 적용하고 서비스 설정과 프로젝트의 AI 수정 허용을 맞추세요. 상세 구현 범위는 [AI_PROGRESS.md](docs/AI_PROGRESS.md)를 참고하세요.
+배포 UI의 [AWS/GCP 자동·수동 선택과 연결 설정](docs/cloud-choice.md).

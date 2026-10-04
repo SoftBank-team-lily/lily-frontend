@@ -3,7 +3,9 @@ export type DeploymentStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "rolled-back";
+  | "rolled-back"
+  /** 사용자가 배포 도중 멈췄다. 트래픽은 이전 버전 그대로 */
+  | "cancelled";
 /** 배포 위치. cloud: 플랫폼 클러스터, onprem: 사용자 PC 의 에이전트 */
 export type DeployTarget = "cloud" | "onprem";
 /**
@@ -11,6 +13,8 @@ export type DeployTarget = "cloud" | "onprem";
  * ONPREM_ONLY: DB 와 요청 모두 내 PC. 버스팅·거점 전환이 없다.
  */
 export type DeploymentMode = "HYBRID" | "ONPREM_ONLY";
+/** 하이브리드의 클라우드. 온프레미스 전용은 AWS 로 둔다 (클라우드가 없다). 만든 뒤에는 바꾸지 않는다 */
+export type CloudProvider = "AWS" | "GCP";
 /** 앱 DB. none: DB 없이 배포 */
 export type DatabaseChoice = "postgres" | "mysql" | "none";
 /**
@@ -31,12 +35,19 @@ export type DeploySettings = {
   databaseLocation?: DatabaseLocation;
   /** 등록할 때만 정한다. 비우면 HYBRID */
   deploymentMode?: DeploymentMode;
+  /** 하이브리드의 클라우드. 등록할 때 선택 전략이 정한다. 기본 전략은 이 값(사용자 선택)이고, 비우면 AWS */
+  cloudProvider?: CloudProvider;
+  cloudSelection?: "auto" | "manual";
   /** databaseLocation 이 external 일 때 DB 주소 (비밀번호 포함, 돌려주지 않는다) */
   databaseUrl?: string;
   /** 서버가 랜덤 값을 만들어 넣을 환경변수 (JWT 서명 키 같은 앱 내부 비밀값) */
   generateEnv?: string[];
   /** 같은 레포의 다른 프로젝트에 저장된 값을 가져올 환경변수 */
   reuseEnv?: string[];
+  /** 온프레미스: PC 장애 때 읽기 사본(Cache API)을 쓴다. 비우면 켠다 */
+  edgeSnapshot?: boolean;
+  /** 온프레미스: PC 장애 때 POST 를 쓰기 보관(DO)에 쌓는다. 비우면 켠다 */
+  edgeQueue?: boolean;
 };
 /** 설정 키를 채우는 방법. GENERATE: 서버가 랜덤 값, DEFAULT: value 를 넣는다, INPUT: 사용자만 아는 값 */
 export type ConfigKind = "GENERATE" | "DEFAULT" | "INPUT";
@@ -170,6 +181,10 @@ export type Project = {
   target: DeployTarget;
   /** 만든 뒤에는 바꾸지 않는다. 이 필드 전의 프로젝트는 HYBRID */
   deploymentMode: DeploymentMode;
+  /** 만든 뒤에는 바꾸지 않는다. 이 필드 전의 프로젝트는 AWS */
+  cloudProvider: CloudProvider;
+  cloudSelection?: "auto" | "manual";
+  cloudSelectionReason?: string | null;
   /** 앱이 있는 하위 폴더. 레포 루트면 "" */
   rootDir: string;
   /** 배포 설정. null 이면 builder 가 레포를 보고 정한다 */
@@ -249,6 +264,23 @@ export type SchemaEntry = {
   state: "active" | "complete" | "baseline" | "applied" | "failed";
   startedAt: string | null;
 };
+/**
+ * 클라우드 전용 앱을 다른 클라우드로 옮기기 (lily-builder /api/apps/{app}/migrate).
+ * RUNNING: 옮기는 중. HOLD: 옮겼고 원본은 내려 둔 채 보관 (되돌리기·정리 가능). FINALIZED: 원본 정리까지 끝.
+ * FAILED: 실패해서 원본으로 되돌렸다. ROLLED_BACK: HOLD 에서 사용자가 원본으로 되돌렸다
+ */
+export type CloudMove = {
+  id: string;
+  from: CloudProvider;
+  to: CloudProvider;
+  state: "RUNNING" | "HOLD" | "FINALIZED" | "FAILED" | "ROLLED_BACK";
+  step: string;
+  downtimeMs: number | null;
+  startedAt: string;
+  updatedAt: string;
+  /** 실패 이유. 실패가 아니면 null */
+  message: string | null;
+};
 /** 프로젝트 상세의 스키마 이력 패널. window 가 있으면 그 시각까지 스키마까지 롤백할 수 있다 */
 export type ProjectSchema = {
   engine: "pgroll" | "flyway" | null;
@@ -264,4 +296,33 @@ export type ProjectSchema = {
   }[];
   history: SchemaEntry[];
   message: string | null;
+};
+export type WriteQueueItem = {
+  queuedId: string;
+  path: string;
+  /** queued: PC 복구를 기다림, sent: PC 가 2xx·3xx 로 받음, failed: PC 가 4xx 로 거절했거나 풀 수 없음 */
+  state: "queued" | "sent" | "failed";
+  status: number | null;
+  attempts: number;
+  receivedAt: string;
+  updatedAt: string;
+};
+/**
+ * 온프레미스 앱의 엣지 쓰기 큐. PC 장애 때 paths 아래 POST 를 Cloudflare 에 쌓았다가 PC 가 돌아오면 순서대로 다시 보낸다.
+ * routed=false 면 공개 주소에 엣지 Worker 가 없어 경로를 등록해도 쓰이지 않는다 (null: 확인하지 못함)
+ */
+export type WriteQueue = {
+  routed: boolean | null;
+  paths: string[];
+  counts: { queued: number; sent: number; failed: number };
+  items: WriteQueueItem[];
+  /** 장애 중 읽기 사본(Cache API)을 쓰는가. 쓰기 보관은 paths 가 있으면 켜진 것이다 */
+  snapshot?: boolean;
+  /**
+   * 재전송 전 마지막 PC 확인 (GET /). status null: 응답 없음, edge: Cloudflare 가 만든 오류(PC 에 닿지 않음),
+   * appErrors: 앱의 5xx 가 이어진 수 (10번이면 보내 본다). 아직 확인한 적 없으면 null
+   */
+  lastCheck?: { at: string; status: number | null; edge: boolean; appErrors: number } | null;
+  /** PC 장애로 보고 새 POST 를 쌓기 시작한 시각. PC 확인이 성공하면 null */
+  downSince?: string | null;
 };

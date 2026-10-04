@@ -126,6 +126,18 @@ describe("클라우드 앱을 내 PC 로 옮기기", () => {
     expect(deps.results.get("d1")?.message).toContain("클라우드에 그대로");
   });
 
+  it("내 PC 배포를 취소하면 클라우드를 되돌리고 cancelled 로 닫는다", async () => {
+    const deps = fake({ database: "local" });
+    await runOnce(deps);
+    deps.finish({ status: "CANCELLED", url: null, message: "사용자가 취소했다" });
+    await runOnce(deps);
+
+    expect(deps.calls).toContain(`cancel ${APP}`);
+    expect(deps.calls).not.toContain("autofix");
+    expect(deps.calls.at(-1)).toBe("event cancelled");
+    expect(deps.results.get("d1")?.message).toBe("내 PC 로 옮기기를 취소해서 클라우드에 그대로 두었어요.");
+  });
+
   it("Ingress 를 넘긴 뒤 확인이 실패하면 실패로 남긴다", async () => {
     const deps = fake({ database: null }, { ok: false, message: "클라우드 주소로 내 PC 앱에 닿지 않아 클라우드로 되돌렸어요." });
     await runOnce(deps);

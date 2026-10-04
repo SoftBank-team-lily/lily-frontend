@@ -77,7 +77,13 @@ export async function realDeploy({
         continue;
       }
     }
-    if (status === "succeeded" || status === "failed" || status === "rolled-back") {
+    // 목록 화면에서 취소한 배포(cancelled)도 여기서는 끝난 실패로 보인다
+    if (
+      status === "succeeded" ||
+      status === "failed" ||
+      status === "rolled-back" ||
+      status === "cancelled"
+    ) {
       const result = {
         repo,
         slug: toSlug(repo),

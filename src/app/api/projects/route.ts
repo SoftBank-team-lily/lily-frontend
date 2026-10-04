@@ -40,8 +40,12 @@ export async function POST(request: Request) {
         databaseLocation: input.databaseLocation,
         databaseUrl: input.databaseUrl,
         deploymentMode: input.deploymentMode,
+        cloudProvider: input.cloudProvider,
+        cloudSelection: input.cloudSelection,
         generateEnv: input.generateEnv,
         reuseEnv: input.reuseEnv,
+        edgeSnapshot: input.edgeSnapshot,
+        edgeQueue: input.edgeQueue,
       }),
       201,
     );

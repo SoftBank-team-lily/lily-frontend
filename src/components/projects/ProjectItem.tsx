@@ -11,6 +11,7 @@ import {
 } from "@/lib/projects/client";
 import { FixPanel } from "./FixPanel";
 import { MovePanel } from "./MovePanel";
+import { CloudMovePanel } from "./CloudMovePanel";
 import type { AppState, Project, DeploymentStatus } from "@/lib/projects/types";
 import { STAGES } from "@/lib/deploy/stages";
 import { placeBadge } from "@/lib/projects/burst";
@@ -32,6 +33,7 @@ const statusLabels: Record<DeploymentStatus, string> = {
   succeeded: "배포 완료",
   failed: "배포 실패",
   "rolled-back": "롤백 완료",
+  cancelled: "배포 취소됨",
 };
 const runtimeLabels: Record<AppState, string> = {
   running: "실행 중",
@@ -68,6 +70,9 @@ export function ProjectItem({
   const movingNow = deploying && latest?.move === "onprem";
   const canMove =
     project.target === "cloud" && latest?.status === "succeeded" && !deploying;
+  /** 다른 클라우드로 옮기기 창 (AWS ↔ GCP) */
+  const [cloudMoving, setCloudMoving] = useState(false);
+  const canCloudMove = canMove && project.deploymentMode !== "ONPREM_ONLY";
   /** 중지·다시 시작·삭제. 실패하면 이유를 보인다 */
   async function act(operation: () => Promise<void>) {
     if (lock.current) return;
@@ -96,6 +101,17 @@ export function ProjectItem({
         ),
       ),
     );
+  /** 진행 중인 배포를 멈춘다. 결과(cancelled)는 목록 새로고침으로 보인다 */
+  const cancelDeploy = () =>
+    act(async () => {
+      if (!latest) return;
+      onUpdate(
+        await projectRequest<Project>(
+          `/api/projects/${project.id}/deployments/${latest.id}/cancel`,
+          { method: "POST" },
+        ),
+      );
+    });
   const remove = (dropDatabase: boolean) =>
     act(async () => {
       await projectRequest(
@@ -220,6 +236,10 @@ export function ProjectItem({
         · {project.deploymentMode === "ONPREM_ONLY" && (
           <>{t("온프레미스 전용")} · </>
         )}
+        {project.deploymentMode !== "ONPREM_ONLY" && project.cloudSelection === "auto" && <p className="text-caption text-mute">{t("자동 선택")}: {project.cloudSelectionReason ?? project.cloudProvider}</p>}
+        {project.deploymentMode !== "ONPREM_ONLY" && project.cloudProvider === "GCP" && (
+          <>GCP · </>
+        )}
         {project.movedFromCloud && <>{t("클라우드 주소 그대로 ·")} </>}
         {project.databaseLocation && (
           <>{t(locationLabels[project.databaseLocation])} · </>
@@ -277,6 +297,14 @@ export function ProjectItem({
               {stepLine}
             </p>
           )}
+          <button
+            type="button"
+            onClick={cancelDeploy}
+            disabled={busy}
+            className="mt-2 text-caption text-mute hover:text-danger disabled:opacity-40"
+          >
+            {busy ? t("요청 중…") : t("배포 취소")}
+          </button>
         </div>
       )}
       {latest?.autoFixed && (
@@ -304,7 +332,9 @@ export function ProjectItem({
         />
       ) : (
         latest?.message &&
-        (latest.status === "failed" || latest.status === "rolled-back") && (
+        (latest.status === "failed" ||
+          latest.status === "rolled-back" ||
+          latest.status === "cancelled") && (
           <p className="mt-1 break-words text-caption text-mute">
             {t(latest.message)}
           </p>
@@ -474,6 +504,19 @@ export function ProjectItem({
               {t("클라우드 → 온프레미스 전환")}
             </button>
           )}
+          {canCloudMove && !cloudMoving && (
+            <button
+              type="button"
+              onClick={() => {
+                setCloudMoving(true);
+                setError("");
+              }}
+              disabled={busy}
+              className="text-mute hover:text-ink disabled:opacity-40"
+            >
+              {t("다른 클라우드로 옮기기")}
+            </button>
+          )}
           {!deploying && (
             <button
               type="button"
@@ -517,6 +560,13 @@ export function ProjectItem({
             onUpdate(value);
           }}
           onCancel={() => setMoving(false)}
+        />
+      )}
+      {cloudMoving && project.target === "cloud" && !editing && (
+        <CloudMovePanel
+          project={project}
+          onUpdate={onUpdate}
+          onClose={() => setCloudMoving(false)}
         />
       )}
       {deleting && !editing && (

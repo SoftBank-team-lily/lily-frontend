@@ -67,6 +67,8 @@ export const projectSchema = z
     name: nameSchema.optional(),
     target: z.enum(["cloud", "onprem"]).optional(),
     deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
+    cloudProvider: z.enum(["AWS", "GCP"]).optional(),
+    cloudSelection: z.enum(["auto", "manual"]).optional(),
     ...settingsShape(),
     // 등록할 때만 받는다. 바꾸면 tenant DB 가 엔진마다 따로 생겨서 updateSchema 에는 없다
     database: databaseSchema.optional(),
@@ -76,9 +78,15 @@ export const projectSchema = z
     // 배포 전 확인 창: 서버가 랜덤 값을 만들 키, 같은 레포 다른 프로젝트 값을 가져올 키
     generateEnv: envKeysSchema.optional(),
     reuseEnv: envKeysSchema.optional(),
+    // 온프레미스 PC 장애 대비. 비우면 둘 다 켠다
+    edgeSnapshot: z.boolean().optional(),
+    edgeQueue: z.boolean().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if ((value.edgeSnapshot !== undefined || value.edgeQueue !== undefined)
+      && value.target !== "onprem" && value.deploymentMode !== "ONPREM_ONLY")
+      ctx.addIssue({ code: "custom", message: "장애 대비(읽기 사본·쓰기 보관)는 온프레미스 프로젝트만 정해요." });
     if (value.databaseLocation === "external" && !value.databaseUrl)
       ctx.addIssue({ code: "custom", message: "사용할 DB 주소를 넣어 주세요." });
     if (value.databaseUrl && value.databaseLocation !== "external")
@@ -89,6 +97,8 @@ export const projectSchema = z
       ctx.addIssue({ code: "custom", message: "온프레미스 전용은 내 PC 에만 배포해요." });
     if (value.deploymentMode === "ONPREM_ONLY" && value.databaseLocation && value.databaseLocation !== "local")
       ctx.addIssue({ code: "custom", message: "온프레미스 전용 DB 는 내 PC 에만 둘 수 있어요." });
+    if (value.deploymentMode === "ONPREM_ONLY" && value.cloudProvider === "GCP")
+      ctx.addIssue({ code: "custom", message: "온프레미스 전용은 클라우드를 고르지 않아요." });
     if (value.databaseUrl && value.database && value.database !== "none") {
       const engine = value.databaseUrl.startsWith("mysql:") ? "mysql" : "postgres";
       if (engine !== value.database)
@@ -139,6 +149,7 @@ export const updateSchema = z
     env: envSchema.optional(),
     removeEnv: z.array(envKeySchema).max(50).optional(),
     deploymentMode: z.enum(["HYBRID", "ONPREM_ONLY"]).optional(),
+    cloudProvider: z.enum(["AWS", "GCP"]).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "바꿀 내용이 없어요.");
@@ -151,6 +162,12 @@ export const moveSchema = z
   })
   .strict();
 export type ProjectMove = z.infer<typeof moveSchema>;
+/** 클라우드 전용 앱을 다른 클라우드로 옮기기. start 는 to 가 필요하다 */
+export const cloudMoveSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("start"), to: z.enum(["AWS", "GCP"]) }).strict(),
+  z.object({ action: z.literal("rollback"), discardTargetWrites: z.literal(true) }).strict(),
+  z.object({ action: z.literal("finalize") }).strict(),
+]);
 /** 버스팅 켜기·끄기와 클라우드 비율 (0~100). 0 이어도 대기 Pod 1대는 둔다 */
 export const burstSchema = z
   .object({
@@ -159,6 +176,15 @@ export const burstSchema = z
   })
   .strict();
 export type BurstInput = z.infer<typeof burstSchema>;
+/** 엣지 쓰기 큐에 넣을 POST 경로. / 로 시작하고 쿼리·공백이 없다 (lily-builder EdgeQueueController 와 같다). 빈 목록이면 끈다 */
+/** 모니터 패널의 엣지 체크박스. 준 값만 바꾼다 (queue: 장애 중 쓰기 보관, snapshot: 장애 중 읽기 사본) */
+export const writeQueueSchema = z
+  .object({ queue: z.boolean().optional(), snapshot: z.boolean().optional() })
+  .strict()
+  .refine((value) => value.queue !== undefined || value.snapshot !== undefined, {
+    message: "바꿀 값이 없어요.",
+  });
+export type WriteQueueInput = z.infer<typeof writeQueueSchema>;
 /** 공개 주소가 가리킬 곳 */
 /** migrateDatabase: 앱 DB 도 옮긴다 (클라우드로: 내 PC → RDS, 내 PC 로: RDS → 내 PC) */
 export const homeSchema = z
@@ -167,7 +193,7 @@ export const homeSchema = z
 export const eventSchema = z
   .object({
     eventId: z.string().min(1).max(128),
-    status: z.enum(["running", "succeeded", "failed", "rolled-back"]),
+    status: z.enum(["running", "succeeded", "failed", "rolled-back", "cancelled"]),
   })
   .strict();
 export function validate<T>(schema: z.ZodType<T>, value: unknown): T {

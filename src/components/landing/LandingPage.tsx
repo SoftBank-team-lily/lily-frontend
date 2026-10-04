@@ -21,6 +21,7 @@ import {
 } from "@/lib/projects/client";
 import { findProject, otherTarget } from "@/lib/deploy/realDeploy";
 import type {
+  CloudProvider,
   Detection,
   DeploymentMode,
   DeploySettings,
@@ -84,6 +85,8 @@ export function LandingPage({
     target: DeployTarget;
   } | null>(null);
   const [mode, setMode] = useState<DeploymentMode>("HYBRID");
+  const [selection, setSelection] = useState<"auto" | "manual">("auto");
+  const [provider, setProvider] = useState<CloudProvider>("AWS");
   const [target, setTarget] = useState<DeployTarget>("cloud");
   const [agent, setAgent] = useState<AgentState>(null);
   const place = mode === "ONPREM_ONLY" ? "onprem" : target;
@@ -164,6 +167,7 @@ export function LandingPage({
       settings = {
         ...readSettings(new FormData(event.currentTarget)),
         deploymentMode: mode,
+        ...(mode === "ONPREM_ONLY" ? {} : { cloudSelection: selection, ...(selection === "manual" ? { cloudProvider: provider } : {}) }),
       };
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : REPO_ERROR);
@@ -181,6 +185,12 @@ export function LandingPage({
             409,
             "MODE_LOCKED",
             "배포 모드는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
+          );
+        if (selection === "manual" && mode !== "ONPREM_ONLY" && (existing.cloudProvider ?? "AWS") !== provider)
+          throw new ProjectError(
+            409,
+            "PROVIDER_LOCKED",
+            "클라우드 제공자는 프로젝트를 만든 뒤에 바꿀 수 없어요.",
           );
         const conflict = otherTarget(existing, place);
         if (conflict) throw conflict;
@@ -240,6 +250,8 @@ export function LandingPage({
           ? { databaseLocation: picked.databaseLocation }
           : {}),
         ...(picked.databaseUrl ? { databaseUrl: picked.databaseUrl } : {}),
+        ...(picked.edgeSnapshot !== undefined ? { edgeSnapshot: picked.edgeSnapshot } : {}),
+        ...(picked.edgeQueue !== undefined ? { edgeQueue: picked.edgeQueue } : {}),
         env: { ...picked.env, ...(settings.env ?? {}) },
         generateEnv: picked.generateEnv,
         reuseEnv: picked.reuseEnv,
@@ -344,6 +356,10 @@ export function LandingPage({
                   setMode(next);
                   if (next === "ONPREM_ONLY") setTarget("onprem");
                 }}
+                selection={selection}
+                onSelectionChange={setSelection}
+                provider={provider}
+                onProviderChange={setProvider}
                 onAgentChange={setAgent}
                 onNeedLogin={onNeedLogin}
                 waitingAgent={waitingAgent}
