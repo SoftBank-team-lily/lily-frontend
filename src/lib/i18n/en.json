@@ -883,5 +883,8 @@
   "DB 가 있어서 쓰기가 갈라지지 않게 원본을 먼저 내리고 DB 를 복사해요. 복사와 새 배포 동안 앱이 응답하지 않아요. PostgreSQL 만 옮겨요.": "Because the app has a database, the original is stopped first so writes don't split, then the database is copied. The app does not respond during the copy and the new deployment. Only PostgreSQL is supported.",
   "DB 가 없어서 새 클라우드를 먼저 띄우고 주소를 바꿔요. 멈추는 시간이 없어요.": "The app has no database, so the new cloud is started first and the address is switched. There is no downtime.",
   "{{from}} → {{to}} 옮기기 시작": "Start moving {{from}} → {{to}}",
-  "클라우드에 배포한 앱만 다른 클라우드로 옮길 수 있어요.": "Only apps deployed to the cloud can be moved to another cloud."
+  "클라우드에 배포한 앱만 다른 클라우드로 옮길 수 있어요.": "Only apps deployed to the cloud can be moved to another cloud.",
+  "{{from}} 로 되돌리는 중이에요. 주소가 바뀐 뒤 반영을 기다렸다가 {{to}} 쪽을 지워요.": "Rolling back to {{from}}. After the address switches, it waits for propagation and then removes the {{to}} side.",
+  "클라우드를 {{to}} 로 바꿨어요. 내 PC 로 다시 배포하면서 {{to}} 에 대기 Pod 를 만들어요.": "Switched the cloud to {{to}}. Redeploying to your PC creates the standby pod on {{to}}.",
+  "앱은 계속 내 PC 가 받아요. {{from}} 대기 Pod 를 지우고 내 PC 로 다시 배포해 {{to}} 에 대기 Pod 를 만들어요. 그동안 몇 분은 넘침과 PC 장애 때 클라우드 전환이 없어요. DB 를 클라우드(RDS 터널)에 둔 앱은 아직 옮기지 못해요.": "Your PC keeps serving the app. The {{from}} standby pod is removed and the app is redeployed to your PC to create a standby pod on {{to}}. For a few minutes there is no overflow or cloud failover. Apps with their database in the cloud (RDS tunnel) cannot be moved yet."
 }

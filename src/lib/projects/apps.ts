@@ -374,6 +374,7 @@ function cloudMove(view: BuilderMove): CloudMove {
     state: view.state,
     step: view.step,
     downtimeMs: view.downtimeMs ?? null,
+    hybrid: view.hybrid ?? false,
     startedAt: view.startedAt,
     updatedAt: view.updatedAt,
     message: view.state === "FAILED" && failed ? failed.replace(/^migrate: failed at \w+: /, "") : null,
@@ -423,8 +424,8 @@ async function cloudMoveCall(appName: string, path: string, body: object | undef
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
-    // 되돌리기는 원본 Ready 와 주소 반영을 기다린다
-    signal: AbortSignal.timeout(path === "/rollback" ? 300_000 : 60_000),
+    // 시작·되돌리기는 builder 가 바로 돌려주고 뒤에서 한다. 정리는 원본 앱·DB 삭제를 기다린다
+    signal: AbortSignal.timeout(60_000),
   });
   if (response.status === 400 || response.status === 409) {
     const reason = await builderReason(response);
