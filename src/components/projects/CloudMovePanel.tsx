@@ -17,6 +17,15 @@ const STEPS: Record<string, string> = {
   DEPLOY: "새 클라우드에 배포",
   SWITCH: "공개 주소 전환",
 };
+/** DB 를 클라우드(RDS 터널)에 둔 내 PC 앱: 내 PC 앱 쓰기를 멈추고 DB 를 옮긴 뒤 내 PC 로 다시 배포한다 */
+const HYBRID_STEPS: Record<string, string> = {
+  DATABASE: "새 클라우드 DB 만들기",
+  PAUSE: "내 PC 앱 쓰기 멈춤",
+  COPY: "DB 복사",
+  SWITCH: "클라우드 바꾸기",
+  DEPLOY: "내 PC 로 다시 배포 (새 DB 로 연결)",
+  STANDBY: "옛 클라우드 대기 Pod 정리",
+};
 
 /**
  * 클라우드 전용 앱을 다른 클라우드로 옮긴다 (AWS ↔ GCP). 진행은 lily-builder 가 하고 여기서는 몇 초마다 본다.
@@ -42,6 +51,8 @@ export function CloudMovePanel({
   const target: CloudProvider = project.cloudProvider === "GCP" ? "AWS" : "GCP";
   const hasDatabase = project.database === "postgres" || project.database === "mysql";
   const hybrid = project.target === "onprem";
+  /** 내 PC 앱이 클라우드 DB 를 터널로 쓴다. DB 째 옮기고 그동안 앱이 응답하지 않는다 */
+  const hybridDatabase = hybrid && project.databaseLocation === "cloud" && hasDatabase;
 
   // 창이 열려 있는 동안 몇 초마다 본다. 옮기기가 끝나면 프로젝트(클라우드 표시)를 다시 받는다
   const previous = useRef<CloudMove["state"] | null>(null);
@@ -121,8 +132,8 @@ export function CloudMovePanel({
       )}
       {running && move.step !== "ROLLBACK" && (
         <ol className="space-y-1" aria-live="polite">
-          {Object.entries(STEPS)
-            .filter(([key]) => hasDatabase || (key !== "DATABASE" && key !== "COPY"))
+          {Object.entries(move.hybrid ? HYBRID_STEPS : STEPS)
+            .filter(([key]) => move.hybrid || hasDatabase || (key !== "DATABASE" && key !== "COPY"))
             .map(([key, label]) => (
               <li key={key} className={move.step === key ? "font-semibold text-ink" : "text-mute"}>
                 {move.step === key ? "→ " : ""}
@@ -135,10 +146,15 @@ export function CloudMovePanel({
       {holding && (
         <div className="space-y-3">
           <p className="text-ink">
-            {t("{{to}} 로 옮겼어요. {{from}} 앱은 내려 두고 DB 와 함께 보관 중이에요.", {
-              to: move.to,
-              from: move.from,
-            })}
+            {move.hybrid
+              ? t("{{to}} 로 옮겼어요. 내 PC 앱은 이제 {{to}} DB 를 써요. {{from}} DB 는 보관 중이에요.", {
+                  to: move.to,
+                  from: move.from,
+                })
+              : t("{{to}} 로 옮겼어요. {{from}} 앱은 내려 두고 DB 와 함께 보관 중이에요.", {
+                  to: move.to,
+                  from: move.from,
+                })}
             {move.downtimeMs != null &&
               ` ${t("멈춘 시간 약 {{seconds}}초", { seconds: Math.round(move.downtimeMs / 1000) })}`}
           </p>
@@ -147,6 +163,8 @@ export function CloudMovePanel({
               {t("{{from}} 정리 (되돌릴 수 없어요)", { from: move.from })}
             </Button>
           </div>
+          {!move.hybrid && (
+          <>
           <label className="flex items-center gap-2 text-mute">
             <input
               type="checkbox"
@@ -163,6 +181,13 @@ export function CloudMovePanel({
           >
             {t("{{from}} 로 되돌리기", { from: move.from })}
           </Button>
+          </>
+          )}
+          {move.hybrid && (
+            <p className="text-mute">
+              {t("내 PC 앱은 옮긴 뒤 새 DB 에 바로 써서 되돌리지 않아요. 돌아가려면 정리한 뒤 반대로 다시 옮겨요.")}
+            </p>
+          )}
         </div>
       )}
 
@@ -183,7 +208,12 @@ export function CloudMovePanel({
       {canStart && (
         <div className="space-y-2">
           <p className="text-mute">
-            {hybrid
+            {hybridDatabase
+              ? t(
+                  "DB 가 {{from}} 에 있어서 DB 째 옮겨요. 내 PC 앱 쓰기를 멈추고 DB 를 복사한 뒤, 내 PC 로 다시 배포해 {{to}} DB 에 붙여요. 그동안(1~2분) 앱이 응답하지 않아요. PostgreSQL 만 옮겨요.",
+                  { from: project.cloudProvider, to: target },
+                )
+              : hybrid
               ? t(
                   "앱은 계속 내 PC 가 받아요. {{from}} 대기 Pod 를 지우고 내 PC 로 다시 배포해 {{to}} 에 대기 Pod 를 만들어요. 그동안 몇 분은 넘침과 PC 장애 때 클라우드 전환이 없어요. DB 를 클라우드(RDS 터널)에 둔 앱은 아직 옮기지 못해요.",
                   { from: project.cloudProvider, to: target },
