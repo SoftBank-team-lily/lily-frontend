@@ -72,7 +72,8 @@ export function ProjectItem({
     project.target === "cloud" && latest?.status === "succeeded" && !deploying;
   /** 다른 클라우드로 옮기기 창 (AWS ↔ GCP) */
   const [cloudMoving, setCloudMoving] = useState(false);
-  const canCloudMove = canMove && project.deploymentMode !== "ONPREM_ONLY";
+  const canCloudMove =
+    latest?.status === "succeeded" && !deploying && project.deploymentMode !== "ONPREM_ONLY";
   /** 중지·다시 시작·삭제. 실패하면 이유를 보인다 */
   async function act(operation: () => Promise<void>) {
     if (lock.current) return;
@@ -560,9 +561,10 @@ export function ProjectItem({
           onCancel={() => setMoving(false)}
         />
       )}
-      {cloudMoving && project.target === "cloud" && !editing && (
+      {cloudMoving && project.deploymentMode !== "ONPREM_ONLY" && !editing && (
         <CloudMovePanel
           project={project}
+          deploying={deploying}
           onUpdate={onUpdate}
           onClose={() => setCloudMoving(false)}
         />
