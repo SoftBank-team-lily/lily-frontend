@@ -21,13 +21,17 @@ export function useFixProgress(projectId?: string) {
       polling = true;
       if (timer) clearTimeout(timer);
       let delay = 15000;
+      // 서비스가 꺼져 있거나, 동의가 없고 진행 중인 작업도 없으면 바뀔 것이 없다. 동의를 바꾸면 refresh 로 다시 시작한다
+      let idle = false;
       try {
         const data = await projectRequest<FixProgress>(`/api/projects/${projectId}/fixes`, {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
         });
         if (controller.signal.aborted) return;
         setSnapshot({ projectId: projectId!, data });
-        if (data.runs.some((run) => run.status === "running")) delay = 3000;
+        const running = data.runs.some((run) => run.status === "running");
+        if (running) delay = 3000;
+        idle = !data.enabled || (!data.consent && !running);
       } catch (error) {
         if (controller.signal.aborted) return;
         stopped = error instanceof ProjectError && [401, 403, 404].includes(error.status);
@@ -38,8 +42,9 @@ export function useFixProgress(projectId?: string) {
         }));
       } finally {
         polling = false;
-        if (!stopped && !controller.signal.aborted)
-          timer = setTimeout(poll, document.hidden ? 60000 : delay);
+        // 숨겨진 탭은 묻지 않는다. 다시 보이면 visibilitychange 가 바로 묻는다
+        if (!stopped && !idle && !document.hidden && !controller.signal.aborted)
+          timer = setTimeout(poll, delay);
       }
     }
     function visible() { if (!document.hidden) void poll(); }

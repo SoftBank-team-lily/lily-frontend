@@ -12,7 +12,8 @@ type ClusterApp = {
   replicas: number;
 };
 
-function builderUrl() {
+/** lily-builder 주소 (끝 / 제거). 설정하지 않았으면 null */
+export function builderUrl() {
   return process.env.BUILDER_URL?.replace(/\/+$/, "") || null;
 }
 

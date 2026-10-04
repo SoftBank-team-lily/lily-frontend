@@ -1,28 +1,16 @@
 import "server-only";
-import { createHash, timingSafeEqual } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { z } from "zod";
 import { recordStage, finishRun } from "./progress";
 import { redact } from "@/lib/monitor/server";
-import { ApiError, readJson } from "@/lib/api";
+import { ApiError, readJson, requireRunner } from "@/lib/api";
 import { db } from "@/lib/db";
 import { githubAppConfig, signAppJwt } from "@/lib/github/app";
 import { createInstallationToken } from "@/lib/github/github-api";
-import { forbidden, remediate, type Incident } from "@/lib/remediate/flow";
+import { builderUrl as configuredBuilderUrl } from "@/lib/projects/apps";
+import { forbidden, remediate, type Incident, type ReasonCode } from "@/lib/remediate/flow";
 import { openFixPullRequest } from "@/lib/remediate/github-pr";
-
-function authorized(request: Request) {
-  const expected = process.env.DEPLOYMENT_API_KEY;
-  if (!expected || expected.length < 32 || expected.startsWith("replace-")) {
-    throw new ApiError(503, "NOT_CONFIGURED", "배포 실행기 연결을 설정해 주세요.");
-  }
-  const supplied = request.headers.get("authorization") ?? "";
-  const digest = (value: string) => createHash("sha256").update(value).digest();
-  if (!timingSafeEqual(digest(supplied), digest(`Bearer ${expected}`))) {
-    throw new ApiError(401, "UNAUTHORIZED", "실행기 인증이 필요합니다.");
-  }
-}
 
 const incidentSchema = z.object({
   app: z.string().min(1).max(100),
@@ -37,7 +25,8 @@ const draftSchema = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["off", "rejected"]), reason: z.string().max(1000).optional() }),
 ]);
 
-function reasonCode(reason: string) {
+/** builder 초안 API 는 이유를 문장으로만 준다. 그 문장에서만 코드를 고른다 (서버가 정한 이유는 flow 가 코드를 붙인다) */
+function builderReasonCode(reason: string): ReasonCode {
   if (reason.includes("동의")) return "consent";
   if (reason.includes("GitHub App")) return "github";
   if (reason.includes("커밋")) return "commit";
@@ -45,7 +34,7 @@ function reasonCode(reason: string) {
   if (reason.includes("프레임")) return "no-files";
   if (reason.includes("코드 장애")) return "not-code";
   if (reason.includes("비웠다")) return "no-patch";
-  if (reason.includes("꺼져") || reason.includes("BUILDER_URL")) return "disabled";
+  if (reason.includes("꺼져")) return "disabled";
   return "draft-rejected";
 }
 
@@ -57,7 +46,7 @@ type FixProject = {
 
 /** 접수 기록을 먼저 저장하고 응답한다. 같은 배포·사건은 한 번만 처리한다. */
 export async function acceptIncident(request: Request) {
-  authorized(request);
+  requireRunner(request);
   const parsed = incidentSchema.safeParse(await readJson(request));
   if (!parsed.success) throw new ApiError(400, "BAD_REQUEST", "사건 내용을 확인해 주세요.");
   const incident = parsed.data;
@@ -100,7 +89,13 @@ async function runIncident(id: string, incident: Incident, row: FixProject) {
     const open = await db.query<{ signature: string }>(
       `SELECT signature FROM remediation_prs WHERE project_id=$1 AND status='opened'`, [row.id],
     );
-    const builderUrl = process.env.BUILDER_URL?.replace(/\/+$/, "") ?? "";
+    const builderUrl = configuredBuilderUrl();
+    const app = githubAppConfig();
+    const appReady = Boolean(app.ready && app.privateKey && row.installation_id);
+    // 설치 토큰은 1시간 유효하다. 초안과 PR 이 한 번 만든 토큰을 같이 쓴다
+    let token: Promise<string> | undefined;
+    const installationToken = () =>
+      (token ??= createInstallationToken(signAppJwt(app.id, app.privateKey!), row.installation_id!, boundedFetch));
     const result = await remediate(incident, {
       enabled: process.env.REMEDIATE_ENABLED === "true", consent: row.remediate,
       installationId: row.installation_id, commitSha: row.commit_sha,
@@ -108,49 +103,43 @@ async function runIncident(id: string, incident: Incident, row: FixProject) {
     }, {
       progress: (stage, files) => recordStage(id, stage, files),
       draft: async () => {
-        if (!builderUrl) return { status: "off", reason: "BUILDER_URL 이 없다" };
-        const app = githubAppConfig();
-        if (!app.ready || !app.privateKey || !row.installation_id)
-          return { status: "rejected", reason: "GitHub App 설치가 없다" };
-        const token = await createInstallationToken(signAppJwt(app.id, app.privateKey), row.installation_id, boundedFetch);
+        if (!builderUrl) return { status: "off", reason: "BUILDER_URL 이 없다", code: "disabled" };
+        if (!appReady) return { status: "rejected", reason: "GitHub App 설치가 없다", code: "github" };
         const response = await fetch(`${builderUrl}/api/remediate/drafts`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repoUrl: `https://github.com/${row.repo}`, token,
+          body: JSON.stringify({ repoUrl: `https://github.com/${row.repo}`, token: await installationToken(),
             commit: row.commit_sha, log, files: incident.files }),
           signal: AbortSignal.any([deadline, AbortSignal.timeout(90000)]),
         });
         if (!response.ok) throw new Error("builder");
         const body = draftSchema.safeParse(await response.json());
-        if (!body.success) return { status: "rejected", reason: "diff 응답 형식 오류" };
+        if (!body.success) return { status: "rejected", reason: "diff 응답 형식 오류", code: "draft-rejected" };
         if (body.data.status === "draft") {
           if (Object.keys(body.data.files).length > 3)
-            return { status: "rejected", reason: "diff 파일 제한 초과" };
+            return { status: "rejected", reason: "diff 파일 제한 초과", code: "draft-rejected" };
           return body.data;
         }
-        return { status: body.data.status, reason: body.data.reason ?? "diff를 만들지 못했다" };
+        const reason = body.data.reason ?? "diff를 만들지 못했다";
+        return { status: body.data.status, reason, code: builderReasonCode(reason) };
       },
       openPull: async (files) => {
         failure = "github-unavailable";
-        const app = githubAppConfig();
-        if (!app.ready || !app.privateKey || !row.installation_id || !row.commit_sha)
-          throw new Error("github");
-        const token = await createInstallationToken(signAppJwt(app.id, app.privateKey), row.installation_id, boundedFetch);
+        if (!appReady || !row.commit_sha) throw new Error("github");
         return openFixPullRequest({
-          token, repo: row.repo, base: row.branch ?? "main", commit: row.commit_sha,
+          token: await installationToken(), repo: row.repo, base: row.branch ?? "main", commit: row.commit_sha,
           branch: `lily/fix-${id}`, title: "fix: Lily AI runtime repair",
           body: `${log}\n\nAI가 생성한 수정 PR입니다. 변경 내용을 검토한 뒤 적용해 주세요.`,
           files: Object.entries(files).map(([path, content]) => ({ path, content })),
         }, boundedFetch);
       },
     });
-    await finishRun(id, result.status === "opened" ? "review" : "skipped",
-      result.status === "opened" ? null : reasonCode(result.reason), result.url ?? null);
+    await finishRun(id, result.status === "opened" ? "review" : "skipped", result.code, result.url ?? null);
     if (result.status !== "off") {
       await db.query(
         `INSERT INTO remediation_prs(id,project_id,app_name,signature,commit_sha,status,reason,pr_url)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
         [id, row.id, incident.app, incident.signature, row.commit_sha ?? "",
-          result.status === "opened" ? "opened" : "rejected", reasonCode(result.reason), result.url ?? null],
+          result.status === "opened" ? "opened" : "rejected", result.code ?? "draft-rejected", result.url ?? null],
       );
     }
   } catch {

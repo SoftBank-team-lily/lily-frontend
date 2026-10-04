@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchName, remediate, type Incident, type ProjectFix } from "./flow";
+import { remediate, type Incident, type ProjectFix } from "./flow";
 
 const incident: Incident = {
   app: "blog",
@@ -45,7 +45,7 @@ describe("로그 사고 PR", () => {
         throw new Error("pr");
       },
     });
-    expect(quiet).toMatchObject({ status: "off", reason: "프로젝트 동의가 꺼져 있다" });
+    expect(quiet).toMatchObject({ status: "off", reason: "프로젝트 동의가 꺼져 있다", code: "consent" });
 
     const noSha = await remediate(incident, project({ commitSha: null }), {
       draft: async () => {
@@ -103,8 +103,5 @@ describe("로그 사고 PR", () => {
       status: "opened",
       url: "https://github.com/acme/blog/pull/7",
     });
-    expect(branchName(incident.signature)).toBe(
-      "lily/fix-illegalstateexception-orderservice-java-42",
-    );
   });
 });

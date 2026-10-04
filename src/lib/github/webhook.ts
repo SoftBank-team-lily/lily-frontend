@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { commitSha } from "@/lib/builder/run";
 
 /** GitHub 웹훅 Secret. 계정 화면에서 저장소 설정에 붙여 넣는다. */
 export function createWebhookSecret() {
@@ -60,7 +61,7 @@ function readPush(payload: object) {
     return null;
   const branch = body.ref.slice("refs/heads/".length);
   if (!BRANCH_NAME.test(branch)) return null;
-  if (typeof body.after !== "string" || !/^[0-9a-f]{40}$/.test(body.after))
+  if (typeof body.after !== "string" || !commitSha(body.after))
     return null;
   if (/^0+$/.test(body.after)) return null;
   return { branch, sha: body.after };

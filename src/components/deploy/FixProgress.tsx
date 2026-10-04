@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/provider";
 import { projectRequest } from "@/lib/projects/client";
 import { useFixProgress } from "@/lib/remediate/useFixProgress";
@@ -31,11 +31,17 @@ const reasons: Record<string, string> = {
   interrupted: "작업이 중단됐어요. 저장소의 PR을 확인하고 새 배포에서 다시 시도해 주세요.",
 };
 
+// 서버가 PR 주소를 확인하지만 화면에 링크를 걸기 전에 한 번 더 본다
+const PR_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
+
 export function FixProgress({ projectId }: { projectId?: string }) {
   const { t, locale } = useI18n();
   const { data, error, refresh } = useFixProgress(projectId);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const format = useMemo(() => new Intl.DateTimeFormat(locale, {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }), [locale]);
   if (!projectId) return null;
   const current = data?.runs.find((run) => run.status === "running") ?? data?.runs[0];
   async function consent(value: boolean) {
@@ -51,9 +57,8 @@ export function FixProgress({ projectId }: { projectId?: string }) {
     } catch { setSaveError("AI 수정 설정을 저장하지 못했어요."); }
     finally { setSaving(false); }
   }
-  const time = (at: string) => new Intl.DateTimeFormat(locale, {
-    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
-  }).format(new Date(at));
+  const time = (at: string) => format.format(new Date(at));
+  const reached = current ? fixStages.indexOf(current.stage) : -1;
   return (
     <section className="mt-8 w-full max-w-lg rounded-xl border border-line bg-field p-5 text-left" aria-label={t("AI 수정 진행")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -79,7 +84,6 @@ export function FixProgress({ projectId }: { projectId?: string }) {
           </p>
           <ol className="mt-4 space-y-3">
             {fixStages.map((stage, index) => {
-              const reached = fixStages.indexOf(current.stage);
               const done = index < reached || current.status === "review";
               const active = index === reached && current.status === "running";
               const stopped = index === reached && ["skipped", "failed"].includes(current.status);
@@ -100,7 +104,7 @@ export function FixProgress({ projectId }: { projectId?: string }) {
               <ul className="mt-2 space-y-1 text-mute">{current.files.map((path) => <li key={path} className="break-all font-mono">{path}</li>)}</ul>
             </details>
           )}
-          {current.prUrl && /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(current.prUrl) && (
+          {current.prUrl && PR_URL.test(current.prUrl) && (
             <a href={current.prUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-block text-control text-ink underline">{t("GitHub에서 변경 내용·PR 보기")}</a>
           )}
           <details className="mt-5 border-t border-line pt-4 text-caption">
@@ -111,7 +115,7 @@ export function FixProgress({ projectId }: { projectId?: string }) {
                   <p className="text-ink">{t(statuses[run.status])} · <code>{run.sourceCommit.slice(0, 7) || "—"}</code></p>
                   <ol className="mt-1 space-y-1 text-mute">{run.events.map((event, index) => <li key={`${event.stage}-${index}`}><time dateTime={event.at}>{time(event.at)}</time> · {t(stages[event.stage])}</li>)}</ol>
                   {run.reasonCode && <p className="mt-1 text-mute">{t(reasons[run.reasonCode] ?? "수정 작업 실패")}</p>}
-                  {run.prUrl && /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(run.prUrl) && (
+                  {run.prUrl && PR_URL.test(run.prUrl) && (
                     <a href={run.prUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-ink underline">{t("GitHub에서 변경 내용·PR 보기")}</a>
                   )}
                 </li>

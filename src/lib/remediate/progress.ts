@@ -16,7 +16,7 @@ export async function recordStage(id: string, stage: FixStage, files?: string[])
 
 export async function finishRun(
   id: string,
-  status: "review" | "skipped" | "failed",
+  status: Exclude<FixRun["status"], "running">,
   reasonCode: string | null = null,
   prUrl: string | null = null,
 ) {

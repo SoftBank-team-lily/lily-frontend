@@ -1,6 +1,6 @@
-const API = "https://api.github.com";
+export const API = "https://api.github.com";
 
-function headers(token: string) {
+export function headers(token: string) {
   return {
     Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",
@@ -9,7 +9,7 @@ function headers(token: string) {
   };
 }
 
-async function readJson(response: Response) {
+export async function readJson(response: Response) {
   if (!response.ok) throw new Error("github");
   return response.json() as Promise<unknown>;
 }

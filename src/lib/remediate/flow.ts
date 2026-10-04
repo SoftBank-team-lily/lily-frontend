@@ -1,10 +1,17 @@
+import { commitSha } from "@/lib/builder/run";
 import type { FixStage } from "./types";
 
 export type RemediateStatus = "off" | "rejected" | "opened";
 
+/** 화면이 안내를 고르는 이유 코드. reason 은 사람이 읽는 설명이다 */
+export type ReasonCode =
+  | "disabled" | "consent" | "github" | "commit" | "duplicate" | "no-files"
+  | "not-code" | "no-patch" | "draft-rejected";
+
 export type RemediateResult = {
   status: RemediateStatus;
   reason: string;
+  code: ReasonCode | null;
   url?: string;
 };
 
@@ -24,7 +31,7 @@ export type ProjectFix = {
 };
 
 export type DraftResult =
-  | { status: "off" | "rejected"; reason: string }
+  | { status: "off" | "rejected"; reason: string; code: ReasonCode }
   | { status: "draft"; files: Record<string, string> };
 
 export type RemediateDeps = {
@@ -33,8 +40,6 @@ export type RemediateDeps = {
   progress?: (stage: FixStage, files?: string[]) => Promise<void>;
 };
 
-const SHA = /^[0-9a-f]{40}$/;
-
 /** 모델과 GitHub 를 부르기 전에 서버가 거절한다. */
 export async function remediate(
   incident: Incident,
@@ -42,34 +47,32 @@ export async function remediate(
   deps: RemediateDeps,
 ): Promise<RemediateResult> {
   if (!project.enabled) {
-    return { status: "off", reason: "REMEDIATE_ENABLED 가 꺼져 있다" };
+    return { status: "off", reason: "REMEDIATE_ENABLED 가 꺼져 있다", code: "disabled" };
   }
   if (!project.consent) {
-    return { status: "off", reason: "프로젝트 동의가 꺼져 있다" };
+    return { status: "off", reason: "프로젝트 동의가 꺼져 있다", code: "consent" };
   }
   if (!project.installationId) {
-    return { status: "rejected", reason: "GitHub App 설치가 없다" };
+    return { status: "rejected", reason: "GitHub App 설치가 없다", code: "github" };
   }
-  if (!project.commitSha || !SHA.test(project.commitSha)) {
-    return { status: "rejected", reason: "배포 커밋이 없다" };
+  if (!commitSha(project.commitSha)) {
+    return { status: "rejected", reason: "배포 커밋이 없다", code: "commit" };
   }
   if (project.openSignatures.includes(incident.signature)) {
-    return { status: "rejected", reason: "같은 서명의 PR이 열려 있다" };
+    return { status: "rejected", reason: "같은 서명의 PR이 열려 있다", code: "duplicate" };
   }
   if (incident.files.length === 0) {
-    return { status: "rejected", reason: "레포 안 프레임이 없다" };
+    return { status: "rejected", reason: "레포 안 프레임이 없다", code: "no-files" };
   }
   await deps.progress?.("drafting");
   const draft = await deps.draft();
-  if (draft.status !== "draft") {
-    return { status: draft.status === "off" ? "off" : "rejected", reason: draft.reason };
-  }
+  if (draft.status !== "draft") return draft;
   await deps.progress?.("checking");
   const paths = guardPaths(draft.files, incident.files);
-  if (!paths.ok) return { status: "rejected", reason: paths.reason };
+  if (!paths.ok) return { status: "rejected", reason: paths.reason, code: "draft-rejected" };
   await deps.progress?.("opening-pr", Object.keys(draft.files));
   const url = await deps.openPull(draft.files);
-  return { status: "opened", reason: "", url };
+  return { status: "opened", reason: "", code: null, url };
 }
 
 export function guardPaths(
@@ -93,13 +96,4 @@ export function forbidden(path: string) {
     return true;
   }
   return name === ".github/workflows" || name.startsWith(".github/workflows/") || name.includes("/.github/workflows/");
-}
-
-export function branchName(signature: string) {
-  const slug = signature
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60);
-  return `lily/fix-${slug || "incident"}`;
 }

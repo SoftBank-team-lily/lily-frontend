@@ -72,11 +72,15 @@ export async function completeInstall(
   let repos: string[];
   try {
     const jwt = signAppJwt(config.id, config.privateKey);
-    accountLogin = (await fetchInstallation(jwt, installationId)).accountLogin;
-    const token = await createInstallationToken(jwt, installationId);
+    // 설치 정보와 토큰은 둘 다 JWT 만 쓰므로 서로 기다리지 않는다
+    const [installation, token] = await Promise.all([
+      fetchInstallation(jwt, installationId),
+      createInstallationToken(jwt, installationId),
+    ]);
+    accountLogin = installation.accountLogin;
     repos = await listInstallationRepos(token);
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
+  } catch {
+    // GitHub 호출·서명 오류의 원래 메시지는 화면에 보내지 않는다
     throw new ApiError(
       502,
       "GITHUB_UNAVAILABLE",

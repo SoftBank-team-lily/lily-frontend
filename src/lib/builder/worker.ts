@@ -287,7 +287,8 @@ function realDeps(builderUrl: string, database: string | null): RunDeps {
       );
     },
     async saveCommit(deploymentId, sha) {
-      await db.query("UPDATE builder_runs SET commit_sha=$2 WHERE deployment_id=$1", [deploymentId, sha]);
+      // 폴링마다 불리므로 값이 바뀔 때만 쓴다
+      await db.query("UPDATE builder_runs SET commit_sha=$2 WHERE deployment_id=$1 AND commit_sha IS DISTINCT FROM $2", [deploymentId, sha]);
     },
     async freezeCloud(app) {
       await appAction(app, "stop");

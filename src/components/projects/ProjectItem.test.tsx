@@ -15,6 +15,7 @@ const project: Project = {
   name: "repo",
   target: "cloud",
   deploymentMode: "HYBRID",
+  cloudProvider: "AWS",
   databaseLocation: null,
   database: null,
   movedFromCloud: false,

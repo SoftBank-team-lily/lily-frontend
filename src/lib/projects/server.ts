@@ -1041,22 +1041,13 @@ function webhookUrl() {
 async function ensureWebhookSecrets(rows: Row[]) {
   for (const row of rows) {
     if (row.webhook_secret) continue;
-    const secret = createWebhookSecret();
+    // 동시에 채워도 먼저 저장된 값을 돌려받는다 (행 잠금 뒤 COALESCE 를 다시 계산한다)
     const updated = await db.query<{ webhook_secret: string }>(
-      "UPDATE projects SET webhook_secret=$2 WHERE id=$1 AND webhook_secret IS NULL RETURNING webhook_secret",
-      [row.id, secret],
+      "UPDATE projects SET webhook_secret=COALESCE(webhook_secret,$2) WHERE id=$1 RETURNING webhook_secret",
+      [row.id, createWebhookSecret()],
     );
-    if (updated.rows[0]) {
-      row.webhook_secret = updated.rows[0].webhook_secret;
-      continue;
-    }
-    const current = await db.query<{ webhook_secret: string | null }>(
-      "SELECT webhook_secret FROM projects WHERE id=$1",
-      [row.id],
-    );
-    const value = current.rows[0]?.webhook_secret;
-    if (!value)
+    if (!updated.rows[0])
       throw new ApiError(404, "NOT_FOUND", "프로젝트를 찾을 수 없어요.");
-    row.webhook_secret = value;
+    row.webhook_secret = updated.rows[0].webhook_secret;
   }
 }

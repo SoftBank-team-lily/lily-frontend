@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { getUser } from "@/lib/auth/session";
 import { consumeLimit } from "@/lib/limits";
 
@@ -67,6 +68,16 @@ export async function requireUser(request: Request, mutation = false) {
   if (!user.emailVerified)
     throw new ApiError(403, "UNVERIFIED", "이메일 인증이 필요해요.");
   return user;
+}
+/** 배포 실행기(builder·observer)가 보내는 내부 요청. DEPLOYMENT_API_KEY Bearer 를 상수 시간으로 비교한다 */
+export function requireRunner(request: Request) {
+  const expected = process.env.DEPLOYMENT_API_KEY;
+  if (!expected || expected.length < 32 || expected.startsWith("replace-"))
+    throw new ApiError(503, "NOT_CONFIGURED", "배포 실행기 연결을 설정해 주세요.");
+  const supplied = request.headers.get("authorization") ?? "";
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  if (!timingSafeEqual(digest(supplied), digest(`Bearer ${expected}`)))
+    throw new ApiError(401, "UNAUTHORIZED", "실행기 인증이 필요합니다.");
 }
 export async function readJson(request: Request): Promise<unknown> {
   if (

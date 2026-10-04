@@ -3,14 +3,15 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api";
 import { getProject } from "@/lib/projects/server";
 import { appName } from "@/lib/builder/run";
+import { builderUrl as configuredBuilderUrl } from "@/lib/projects/apps";
 
 export type Place = "cloud" | "onprem";
 
 function builderUrl() {
-  const url = process.env.BUILDER_URL;
+  const url = configuredBuilderUrl();
   if (!url)
     throw new ApiError(503, "NOT_CONFIGURED", "배포 서버 연결을 설정해 주세요.");
-  return url.replace(/\/+$/, "");
+  return url;
 }
 
 async function askBuilder(
